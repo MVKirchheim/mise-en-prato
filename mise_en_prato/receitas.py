@@ -915,6 +915,28 @@ def listar_categorias(con: sqlite3.Connection) -> list[str]:
     return [r["categoria"] for r in rows]
 
 
+def calcular_fator_rendimento(porcoes_original: int | Decimal, porcoes_desejado: int | Decimal) -> Decimal:
+    """Calcula o fator de rendimento entre as porções originais e desejadas.
+
+    Args:
+        porcoes_original (int | Decimal): Número de porções originais.
+        porcoes_desejado (int | Decimal): Número de porções desejadas.
+
+    Returns:
+        Decimal: Fator de rendimento normalizado.
+
+    Raises:
+        TypeError: Se qualquer parâmetro for float.
+        ValueError: Se qualquer parâmetro for menor ou igual a zero.
+    """
+    if isinstance(porcoes_original, float) or isinstance(porcoes_desejado, float):
+        raise TypeError("Valores float não são permitidos; use int ou Decimal para precisão.")
+    if porcoes_original <= 0 or porcoes_desejado <= 0:
+        raise ValueError("O número de porções deve ser maior que zero.")
+
+    fator = Decimal(porcoes_desejado) / Decimal(porcoes_original)
+    return fator.normalize()
+
 def escalar_receita(receita: Receita, novas_porcoes: int) -> Receita:
     """Escala as quantidades dos ingredientes para novas porções usando Decimal puro.
 
@@ -928,7 +950,7 @@ def escalar_receita(receita: Receita, novas_porcoes: int) -> Receita:
     if receita.porcoes <= 0:
         raise ValueError("A receita de origem deve ter porções maiores que zero.")
 
-    fator = Decimal(novas_porcoes) / Decimal(receita.porcoes)
+    fator = calcular_fator_rendimento(receita.porcoes, novas_porcoes)
     novos_ingredientes = []
 
     for ing in receita.ingredientes:

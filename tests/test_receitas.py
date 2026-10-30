@@ -546,3 +546,41 @@ def test_preservacao_tabelas_legadas(con):
     )
     p_id = cursor.fetchone()[0]
     assert p_id > 0
+
+class TestFatorRendimento:
+    def test_calculo_proporcional_normal(self):
+        fator = calcular_fator_rendimento(4, 2)
+        assert fator == Decimal("0.5")
+
+        fator = calcular_fator_rendimento(2, 6)
+        assert fator == Decimal("3")
+
+    def test_reducao_de_porcoes(self):
+        fator = calcular_fator_rendimento(10, 5)
+        assert fator == Decimal("0.5")
+
+        fator = calcular_fator_rendimento(8, 2)
+        assert fator == Decimal("0.25")
+
+    def test_rejeicao_estricta_de_float(self):
+        with pytest.raises(TypeError, match=r"(?i)float"):
+            calcular_fator_rendimento(4.0, 2)
+
+        with pytest.raises(TypeError, match=r"(?i)float"):
+            calcular_fator_rendimento(4, 2.0)
+
+        with pytest.raises(TypeError, match=r"(?i)float"):
+            calcular_fator_rendimento(4.0, 2.0)
+
+    def test_rejeicao_de_valores_zero_ou_negativos(self):
+        with pytest.raises(ValueError, match=r"(?i)maior que zero"):
+            calcular_fator_rendimento(0, 2)
+
+        with pytest.raises(ValueError, match=r"(?i)maior que zero"):
+            calcular_fator_rendimento(4, 0)
+
+        with pytest.raises(ValueError, match=r"(?i)maior que zero"):
+            calcular_fator_rendimento(-1, 2)
+
+        with pytest.raises(ValueError, match=r"(?i)maior que zero"):
+            calcular_fator_rendimento(4, -2)
