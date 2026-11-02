@@ -915,7 +915,9 @@ def listar_categorias(con: sqlite3.Connection) -> list[str]:
     return [r["categoria"] for r in rows]
 
 
-def calcular_fator_rendimento(porcoes_original: int | Decimal, porcoes_desejado: int | Decimal) -> Decimal:
+def calcular_fator_rendimento(
+    porcoes_original: int | Decimal, porcoes_desejado: int | Decimal
+) -> Decimal:
     """Calcula o fator de rendimento entre as porções originais e desejadas.
 
     Args:

@@ -13,7 +13,6 @@ Cobre todo o ciclo de vida:
 import io
 import sqlite3
 from decimal import Decimal
-from mise_en_prato.receitas import calcular_fator_rendimento
 from pathlib import Path
 
 import pytest
@@ -26,6 +25,7 @@ from mise_en_prato.receitas import (
     adicionar_ingrediente,
     atualizar_receita,
     buscar_receitas,
+    calcular_fator_rendimento,
     criar_receita,
     escalar_receita,
     excluir_receita,
