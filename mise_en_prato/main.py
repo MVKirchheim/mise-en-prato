@@ -16,7 +16,7 @@ import re
 import sqlite3
 import sys
 from contextlib import asynccontextmanager
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Annotated
@@ -24,9 +24,10 @@ from typing import Annotated
 from fastapi import Depends, FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, StrictBool, StrictInt
 
 from . import (
+    cardapio,
     catalogo,
     cupons,
     enriquecimento,
@@ -1792,6 +1793,93 @@ async def enviar_para_lista(
         adicionados += 1
 
     return responder({"ok": True, "lista_id": lista_id, "adicionados": adicionados})
+
+
+# ── cardápio semanal ─────────────────────────────────────────────────────────
+# Inteiros e booleano estritos: sem isso o pydantic aceitaria True como 1 e 2.0
+# como 2 em porções, que o cardapio.py recusa de propósito.
+class EntradaCardapioNova(BaseModel):
+    data: str
+    refeicao: str
+    receita_id: StrictInt | None = None
+    titulo: str | None = None
+    porcoes: StrictInt | None = None
+    feito: StrictBool = False
+
+
+class EntradaCardapioAlteracao(BaseModel):
+    """Alteração parcial: só o que vier no corpo é mexido (exclude_unset)."""
+
+    titulo: str | None = None
+    porcoes: StrictInt | None = None
+    data: str | None = None
+    refeicao: str | None = None
+    ordem: StrictInt | None = None
+    feito: StrictBool | None = None
+
+
+@app.get("/api/cardapio")
+async def semana_cardapio(_: Morador, con: Banco, semana: str = ""):
+    """A semana (segunda a domingo) que contém `semana`; sem ela, a de hoje.
+
+    A tela manda a data local do navegador — à noite, no Brasil, o UTC já
+    virou o dia, e a semana sairia errada se o servidor adivinhasse.
+    """
+    try:
+        dia = date.fromisoformat(cardapio.validar_data(semana)) if semana else date.today()
+    except ValueError as erro:
+        raise HTTPException(422, str(erro)) from erro
+    return responder(cardapio.listar_semana(con, dia))
+
+
+@app.post("/api/cardapio")
+async def criar_entrada_cardapio(dados: EntradaCardapioNova, quem: Morador, con: Banco):
+    if config().app_mode == "demo":
+        raise HTTPException(403, "Edição do cardápio desativada na demonstração pública.")
+    try:
+        entrada = cardapio.criar_entrada(
+            con,
+            data=dados.data,
+            refeicao=dados.refeicao,
+            receita_id=dados.receita_id,
+            titulo=dados.titulo,
+            porcoes=dados.porcoes,
+            feito=dados.feito,
+            morador=quem,
+        )
+    except cardapio.ReceitaNaoEncontrada as erro:
+        raise HTTPException(404, "Receita não encontrada") from erro
+    except (ValueError, TypeError) as erro:
+        raise HTTPException(422, str(erro)) from erro
+    return responder(entrada)
+
+
+@app.put("/api/cardapio/{entrada_id}")
+async def editar_entrada_cardapio(
+    entrada_id: int, dados: EntradaCardapioAlteracao, _: Morador, con: Banco
+):
+    if config().app_mode == "demo":
+        raise HTTPException(403, "Edição do cardápio desativada na demonstração pública.")
+    try:
+        entrada = cardapio.atualizar_entrada(
+            con, entrada_id, **dados.model_dump(exclude_unset=True)
+        )
+    except cardapio.EntradaNaoEncontrada as erro:
+        raise HTTPException(404, "Entrada do cardápio não encontrada") from erro
+    except (ValueError, TypeError) as erro:
+        raise HTTPException(422, str(erro)) from erro
+    return responder(entrada)
+
+
+@app.delete("/api/cardapio/{entrada_id}")
+async def deletar_entrada_cardapio(entrada_id: int, _: Morador, con: Banco):
+    if config().app_mode == "demo":
+        raise HTTPException(403, "Edição do cardápio desativada na demonstração pública.")
+    try:
+        cardapio.excluir_entrada(con, entrada_id)
+    except cardapio.EntradaNaoEncontrada as erro:
+        raise HTTPException(404, "Entrada do cardápio não encontrada") from erro
+    return responder({"ok": True})
 
 
 # ── a PWA ────────────────────────────────────────────────────────────────────
