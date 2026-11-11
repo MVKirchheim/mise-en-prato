@@ -418,6 +418,10 @@
         <button type="button" id="cardapio-proxima" class="cardapio-nav" aria-label="Próxima semana">›</button>
         <button type="button" id="cardapio-hoje" class="botao-secundario cardapio-btn-hoje">Hoje</button>
       </div>
+      <!-- Linha própria: ao lado de ‹ › e Hoje, o botão quebraria o cabeçalho em 360px. -->
+      <div class="cardapio-acoes">
+        <button type="button" id="cardapio-lista-semana" class="botao-secundario cardapio-btn-lista">Lista da semana</button>
+      </div>
       <p id="cardapio-guia" class="dica cardapio-guia" hidden>Semana em branco: toque em + num almoço ou jantar para planejar.</p>
       <div id="cardapio-dias" class="cardapio-dias"></div>
     </section>
@@ -643,6 +647,30 @@
         <button type="submit" id="cardapio-edit-salvar">Salvar</button>
       </div>
     </form>
+
+    <!-- modo lista da semana -->
+    <div id="cardapio-modo-lista" hidden>
+      <p id="cardapio-lista-estado" class="fraca cardapio-lista-estado" role="status"></p>
+      <div id="cardapio-lista-conteudo" hidden>
+        <div class="cardapio-lista-topo">
+          <label class="cardapio-lista-todos">
+            <input type="checkbox" id="cardapio-lista-todos" class="cardapio-check" checked>
+            <span>Marcar todos</span>
+          </label>
+          <span id="cardapio-lista-contagem" class="fraca"></span>
+        </div>
+        <p class="dica cardapio-lista-dica">Desmarque o que já tem em casa.</p>
+        <ul id="cardapio-lista-grupos" class="cardapio-lista-grupos"></ul>
+
+        <label class="rotulo" for="cardapio-lista-destino">Enviar para</label>
+        <select id="cardapio-lista-destino" class="cardapio-select"></select>
+        <div id="cardapio-lista-nome-caixa" class="cardapio-lista-nome-caixa">
+          <label class="rotulo" for="cardapio-lista-nome">Nome da lista nova</label>
+          <input id="cardapio-lista-nome" type="text" maxlength="100" autocomplete="off">
+        </div>
+        <button type="button" id="cardapio-lista-enviar" class="acao cardapio-lista-enviar">Enviar</button>
+      </div>
+    </div>
   </div>
 
   <script src="/app.js"></script>

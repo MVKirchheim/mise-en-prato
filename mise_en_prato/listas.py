@@ -15,10 +15,12 @@ sanidade.py antes de chegar aqui.
 """
 
 import sqlite3
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from decimal import Decimal
 
 from .banco import milesimos, reais, unidades
+from .receitas import formatar_nota
 
 # Janela larga DE PROPÓSITO. A API já devolve só o que ela considera vigente —
 # e "vigente" para ela inclui preço de duas semanas atrás, medido em 19/08/2026:
@@ -31,12 +33,16 @@ SEM_NOME = "loja não identificada"
 
 
 # ── a lista ──────────────────────────────────────────────────────────────────
+def _inserir_lista(con: sqlite3.Connection, nome: str, morador: str) -> int:
+    return con.execute(
+        "INSERT INTO lista (nome, morador, criada_em) VALUES (?,?,?)",
+        (nome, morador, datetime.now().isoformat(sep=" ", timespec="seconds")),
+    ).lastrowid
+
+
 def criar(con: sqlite3.Connection, nome: str, morador: str) -> int:
     with con:
-        return con.execute(
-            "INSERT INTO lista (nome, morador, criada_em) VALUES (?,?,?)",
-            (nome, morador, datetime.now().isoformat(sep=" ", timespec="seconds")),
-        ).lastrowid
+        return _inserir_lista(con, nome, morador)
 
 
 def listar(con: sqlite3.Connection) -> list[dict]:
@@ -57,7 +63,7 @@ def listar(con: sqlite3.Connection) -> list[dict]:
 def por_produto(
     con: sqlite3.Connection, lista_id: int, produto_id: int, quantidade: Decimal | None = None
 ) -> None:
-    """Põe (ou atualiza) um item na lista."""
+    """Põe (ou atualiza) um item na lista. A quantidade é sobrescrita; a nota não."""
     with con:
         con.execute(
             """INSERT INTO lista_item (lista_id, produto_id, quantidade_milesimos)
@@ -66,6 +72,131 @@ def por_produto(
                DO UPDATE SET quantidade_milesimos = excluded.quantidade_milesimos""",
             (lista_id, produto_id, milesimos(quantidade or Decimal("1"))),
         )
+
+
+# ── o que vem das receitas ───────────────────────────────────────────────────
+# Receita pede "500 g de farinha"; a lista diz quantos pacotes comprar. São
+# grandezas diferentes, e por isso não dividem o mesmo campo: a quantidade
+# continua sendo de compra (1 se o produto é novo na lista, intocada se já
+# estava) e o pedido das receitas vai para a nota, em texto.
+class ListaNaoEncontrada(LookupError):
+    """A lista de compras pedida não existe."""
+
+
+@dataclass
+class Pedido:
+    """O que uma ou mais receitas pedem de um ingrediente."""
+
+    nome: str
+    gtin: str | None
+    partes: list[tuple[Decimal, str]]
+    receitas: list[str]
+
+
+def produto_para_ingrediente(con: sqlite3.Connection, nome: str, gtin: str | None = None) -> int:
+    """O produto do catálogo que corresponde ao ingrediente; cria um se não houver.
+
+    Procura pelo código de barras, depois pela descrição sem diferença de
+    maiúscula. Não faz commit: roda dentro da transação de quem chama.
+    """
+    if gtin:
+        row = con.execute("SELECT id FROM produto WHERE gtin = ? LIMIT 1", (gtin,)).fetchone()
+        if row:
+            return row["id"]
+    row = con.execute(
+        "SELECT id FROM produto WHERE UPPER(descricao_canonica) = UPPER(?) LIMIT 1",
+        (nome.strip(),),
+    ).fetchone()
+    if row:
+        return row["id"]
+    cur = con.execute(
+        "INSERT INTO produto (descricao_canonica, gtin, acompanhar) VALUES (?, ?, 0)",
+        (nome.strip().upper(), gtin),
+    )
+    return cur.lastrowid
+
+
+def mesclar_nota(existente: str | None, nova: str | None) -> str | None:
+    """Junta a nota nova à que o item já tem, com "; ".
+
+    Se o texto novo já é um dos trechos do antigo, nada muda — mandar a mesma
+    receita duas vezes não repete a nota. A comparação é por trecho inteiro, e
+    não por pedaço de texto: "500 g (Bolo)" não pode ser dado como presente só
+    porque a nota tem "1500 g (Bolo)".
+    """
+    if not nova:
+        return existente
+    if not existente:
+        return nova
+    if nova in existente.split("; "):
+        return existente
+    return f"{existente}; {nova}"
+
+
+def acrescentar_de_receita(
+    con: sqlite3.Connection, lista_id: int, produto_id: int, nota: str | None
+) -> bool:
+    """Põe o produto na lista vindo de receita. Devolve True se ele era novo nela.
+
+    Novo: entra com quantidade 1 e a nota. Já na lista: a quantidade fica como
+    está (quem decidiu comprar 3 continua comprando 3) e só a nota é mesclada.
+    Não faz commit: roda dentro da transação de quem chama.
+    """
+    linha = con.execute(
+        "SELECT nota FROM lista_item WHERE lista_id = ? AND produto_id = ?",
+        (lista_id, produto_id),
+    ).fetchone()
+    if linha is None:
+        con.execute(
+            "INSERT INTO lista_item (lista_id, produto_id, quantidade_milesimos, nota)"
+            " VALUES (?,?,?,?)",
+            (lista_id, produto_id, milesimos(Decimal("1")), nota),
+        )
+        return True
+    nova = mesclar_nota(linha["nota"], nota)
+    if nova != linha["nota"]:
+        con.execute(
+            "UPDATE lista_item SET nota = ? WHERE lista_id = ? AND produto_id = ?",
+            (nova, lista_id, produto_id),
+        )
+    return False
+
+
+def enviar_de_receitas(
+    con: sqlite3.Connection,
+    pedidos: list[Pedido],
+    morador: str,
+    lista_id: int | None = None,
+    nome_nova_lista: str = "compras",
+) -> dict:
+    """Leva os pedidos das receitas para uma lista, numa transação só.
+
+    Sem `lista_id`, cria a lista. Pedidos que caem no mesmo produto (dois
+    ingredientes com o mesmo código de barras, ou "Farinha" e "farinha") viram
+    uma nota só. Devolve {"lista_id", "adicionados", "ja_na_lista"}.
+    """
+    if lista_id is not None and (
+        con.execute("SELECT 1 FROM lista WHERE id = ?", (lista_id,)).fetchone() is None
+    ):
+        raise ListaNaoEncontrada(f"Lista {lista_id} não encontrada.")
+
+    with con:
+        if lista_id is None:
+            lista_id = _inserir_lista(con, nome_nova_lista, morador)
+        por_produto_id: dict[int, tuple[list, list]] = {}
+        for pedido in pedidos:
+            produto_id = produto_para_ingrediente(con, pedido.nome, pedido.gtin)
+            partes, nomes = por_produto_id.setdefault(produto_id, ([], []))
+            partes.extend(pedido.partes)
+            nomes.extend(pedido.receitas)
+        adicionados = ja_na_lista = 0
+        for produto_id, (partes, nomes) in por_produto_id.items():
+            nota = formatar_nota(partes, sorted(set(nomes), key=str.casefold))
+            if acrescentar_de_receita(con, lista_id, produto_id, nota):
+                adicionados += 1
+            else:
+                ja_na_lista += 1
+    return {"lista_id": lista_id, "adicionados": adicionados, "ja_na_lista": ja_na_lista}
 
 
 def tirar(con: sqlite3.Connection, lista_id: int, produto_id: int) -> None:
@@ -82,6 +213,7 @@ def itens(con: sqlite3.Connection, lista_id: int) -> list[dict]:
             "descricao": r["apelido"] or r["descricao_canonica"],
             "gtin": r["gtin"],
             "quantidade": unidades(r["quantidade_milesimos"]),
+            "nota": r["nota"],
             "is_granel": bool(r["is_granel"]),
             "ultimo_preco": reais(r["ultimo_centavos"])
             if r["ultimo_centavos"] is not None
@@ -89,7 +221,7 @@ def itens(con: sqlite3.Connection, lista_id: int) -> list[dict]:
         }
         for r in con.execute(
             """
-            SELECT li.produto_id, li.quantidade_milesimos, p.descricao_canonica,
+            SELECT li.produto_id, li.quantidade_milesimos, li.nota, p.descricao_canonica,
                    p.apelido, p.gtin, p.is_granel,
                    COALESCE(
                        (SELECT i2.unitario_centavos FROM item i2

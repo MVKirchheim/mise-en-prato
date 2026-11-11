@@ -1870,3 +1870,69 @@ svg.grafico-historico {
 }
 .cardapio-btn-remover { color: var(--alerta); }
 .cardapio-btn-remover:hover { border-color: var(--alerta); }
+
+/* lista de compras da semana */
+.cardapio-acoes {
+  display: flex;
+  justify-content: flex-end;
+  margin: -.4rem 0 .9rem;
+}
+.cardapio-btn-lista { padding: .5rem .8rem; }
+.cardapio-check:indeterminate {
+  background: var(--terracota);
+  border-color: var(--terracota);
+}
+.cardapio-check:indeterminate::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: .65rem;
+  height: 2.5px;
+  background: var(--painel);
+  transform: translate(-50%, -50%);
+}
+.cardapio-lista-estado { margin: .2rem 0 .6rem; }
+.cardapio-lista-estado:empty { display: none; }
+.cardapio-lista-topo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .6rem;
+}
+.cardapio-lista-todos {
+  display: inline-flex;
+  align-items: center;
+  gap: .5rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.cardapio-lista-dica { margin: .3rem 0 .5rem; }
+.cardapio-lista-grupos {
+  list-style: none;
+  margin: 0 0 1rem;
+  padding: 0;
+  border-top: 1px solid var(--borda);
+}
+.cardapio-lista-grupo {
+  display: flex;
+  align-items: flex-start;
+  gap: .6rem;
+  padding: .55rem 0;
+  border-bottom: 1px solid var(--borda);
+  cursor: pointer;
+}
+.cardapio-lista-grupo .cardapio-check { margin-top: .1rem; }
+.cardapio-lista-texto {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.cardapio-lista-nome { font-weight: 600; overflow-wrap: anywhere; }
+.cardapio-lista-nota { font-size: .8rem; color: var(--fraca); overflow-wrap: anywhere; }
+.cardapio-lista-nome-caixa { margin-top: .7rem; }
+.cardapio-lista-enviar { width: 100%; margin-top: 1rem; }
+.cardapio-lista-enviar:disabled { opacity: .5; cursor: default; box-shadow: none; }
+
+/* nota do item da lista: o que as receitas pedem */
+.item-lista-nota { font-size: .8rem; color: var(--fraca); overflow-wrap: anywhere; }

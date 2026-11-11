@@ -250,6 +250,7 @@
     $('#sheet-cardapio-titulo').textContent = 'Adicionar ao cardápio';
     $('#sheet-cardapio-subtitulo').textContent = legendaCasa(data, refeicao);
     $('#cardapio-modo-adicionar').hidden = false;
+    $('#cardapio-modo-lista').hidden = true;
     $('#cardapio-modo-editar').hidden = true;
     $('#cardapio-escolha-receita').hidden = false;
     $('#cardapio-receita-escolhida').hidden = true;
@@ -381,6 +382,7 @@
       : `${legendaCasa(e.data, e.refeicao)} · texto livre`;
     $('#cardapio-modo-adicionar').hidden = true;
     $('#cardapio-modo-editar').hidden = false;
+    $('#cardapio-modo-lista').hidden = true;
     $('#cardapio-edit-titulo').value = e.titulo;
     $('#cardapio-edit-porcoes').value = e.porcoes ? String(e.porcoes) : '';
     $('#cardapio-edit-data').value = e.data;
@@ -431,6 +433,137 @@
     if (typeof window.abrirModoCozinha === 'function') window.abrirModoCozinha(receitaId);
   }
 
+  // ── lista de compras da semana ────────────────────────────────────────────
+  /* A prévia vem calculada do servidor; a tela só escolhe QUAIS grupos levar.
+     No envio vão as chaves, nunca quantidades: o servidor recalcula tudo. */
+  function estadoLista(texto) {
+    $('#cardapio-lista-estado').textContent = texto || '';
+  }
+
+  function caixasDosGrupos() {
+    return Array.from(document.querySelectorAll('#cardapio-lista-grupos .cardapio-check'));
+  }
+
+  /* Contagem no botão e estado da caixa "marcar todos" (cheia, vazia ou parcial). */
+  function atualizarSelecaoLista() {
+    const caixas = caixasDosGrupos();
+    const marcadas = caixas.filter((c) => c.checked).length;
+    const todos = $('#cardapio-lista-todos');
+    todos.checked = marcadas > 0 && marcadas === caixas.length;
+    todos.indeterminate = marcadas > 0 && marcadas < caixas.length;
+    $('#cardapio-lista-contagem').textContent = `${marcadas} de ${caixas.length}`;
+    const botao = $('#cardapio-lista-enviar');
+    botao.textContent = marcadas === 1 ? 'Enviar 1 item' : `Enviar ${marcadas} itens`;
+    botao.disabled = marcadas === 0;
+  }
+
+  function atualizarDestinoLista() {
+    $('#cardapio-lista-nome-caixa').hidden = $('#cardapio-lista-destino').value !== '';
+  }
+
+  function renderizarPreviaLista(previa, listasAbertas) {
+    const ignoradas = previa.ignoradas
+      ? ` · ${Number(previa.ignoradas)} com receita apagada ficaram de fora`
+      : '';
+    $('#sheet-cardapio-subtitulo').textContent = `${intervaloLegivel(previa.inicio, previa.fim)}${ignoradas}`;
+    if (!previa.grupos.length) {
+      estadoLista('Nenhuma receita planejada e ainda não feita nesta semana. Planeje receitas do livro para montar a lista.');
+      $('#cardapio-lista-conteudo').hidden = true;
+      return;
+    }
+    estadoLista('');
+    $('#cardapio-lista-grupos').innerHTML = previa.grupos
+      .map((g, i) => `
+        <li>
+          <label class="cardapio-lista-grupo" for="cardapio-lista-g${i}">
+            <input type="checkbox" class="cardapio-check" id="cardapio-lista-g${i}"
+                   data-chave="${escapar(g.chave)}" checked>
+            <span class="cardapio-lista-texto">
+              <span class="cardapio-lista-nome">${escapar(g.nome)}</span>
+              <span class="cardapio-lista-nota">${escapar(g.nota)}</span>
+            </span>
+          </label>
+        </li>`)
+      .join('');
+    $('#cardapio-lista-destino').innerHTML = [
+      '<option value="">Nova lista</option>',
+      ...listasAbertas.map(
+        (l) => `<option value="${Number(l.id)}">${escapar(l.nome)} (${Number(l.itens) || 0} itens)</option>`
+      ),
+    ].join('');
+    $('#cardapio-lista-nome').value = `Cardápio ${intervaloLegivel(previa.inicio, previa.fim)}`;
+    atualizarDestinoLista();
+    atualizarSelecaoLista();
+    $('#cardapio-lista-conteudo').hidden = false;
+  }
+
+  async function abrirSheetLista(origem) {
+    const semana = semanaAtual || hojeIso();
+    contexto = { modo: 'lista', semana };
+    $('#sheet-cardapio-titulo').textContent = 'Lista da semana';
+    $('#sheet-cardapio-subtitulo').textContent = '';
+    $('#cardapio-modo-adicionar').hidden = true;
+    $('#cardapio-modo-editar').hidden = true;
+    $('#cardapio-modo-lista').hidden = false;
+    $('#cardapio-lista-conteudo').hidden = true;
+    estadoLista('Calculando o que comprar…');
+    mostrarSheet(origem);
+    $('#sheet-cardapio-fechar').focus();
+
+    const pedido = contexto;
+    let previa;
+    let listasAbertas = [];
+    try {
+      const [dados, listasResp] = await Promise.all([
+        api(`/api/cardapio/lista?semana=${encodeURIComponent(semana)}`),
+        // Sem as listas ainda dá para mandar para uma lista nova.
+        api('/api/listas').catch(() => ({ listas: [] })),
+      ]);
+      previa = dados;
+      listasAbertas = listasResp.listas || [];
+    } catch (err) {
+      if (contexto !== pedido) return;
+      estadoLista(`Falha ao calcular a lista: ${err.message}`);
+      return;
+    }
+    // Painel fechado (ou trocado) enquanto carregava: resposta descartada.
+    if (contexto !== pedido) return;
+    renderizarPreviaLista(previa, listasAbertas);
+  }
+
+  async function enviarListaSemana() {
+    if (!contexto || contexto.modo !== 'lista') return;
+    const chaves = caixasDosGrupos()
+      .filter((c) => c.checked)
+      .map((c) => c.dataset.chave);
+    if (!chaves.length) return;
+    const destino = $('#cardapio-lista-destino').value;
+    const corpo = { semana: contexto.semana, chaves };
+    if (destino) {
+      corpo.lista_id = Number(destino);
+    } else {
+      corpo.nome_nova_lista = $('#cardapio-lista-nome').value.trim() || null;
+    }
+
+    const botao = $('#cardapio-lista-enviar');
+    botao.disabled = true;
+    let res;
+    try {
+      res = await enviar('/api/cardapio/lista', 'POST', corpo);
+    } catch (err) {
+      // A seleção fica como o usuário deixou.
+      alert(`Falha ao enviar para a lista: ${err.message}`);
+      atualizarSelecaoLista();
+      return;
+    }
+    fecharSheet();
+    const novos = Number(res.adicionados) || 0;
+    const ja = Number(res.ja_na_lista) || 0;
+    const partes = [`${novos} ${novos === 1 ? 'item adicionado' : 'itens adicionados'} à lista`];
+    if (ja) partes.push(`${ja} já ${ja === 1 ? 'estava' : 'estavam'} nela (quantidade mantida)`);
+    alert(`${partes.join('; ')}.`);
+  }
+
   // ── inicialização ─────────────────────────────────────────────────────────
   function init() {
     $('#cardapio-anterior')?.addEventListener('click', () => carregarSemana(somarDias(semanaAtual || hojeIso(), -7)));
@@ -475,6 +608,17 @@
     $('#cardapio-modo-editar')?.addEventListener('submit', salvarEdicao);
     $('#cardapio-edit-remover')?.addEventListener('click', removerEntrada);
     $('#cardapio-edit-cozinha')?.addEventListener('click', abrirCozinhaDaEdicao);
+
+    $('#cardapio-lista-semana')?.addEventListener('click', (ev) => abrirSheetLista(ev.currentTarget));
+    $('#cardapio-lista-todos')?.addEventListener('change', (ev) => {
+      caixasDosGrupos().forEach((c) => {
+        c.checked = ev.target.checked;
+      });
+      atualizarSelecaoLista();
+    });
+    $('#cardapio-lista-grupos')?.addEventListener('change', atualizarSelecaoLista);
+    $('#cardapio-lista-destino')?.addEventListener('change', atualizarDestinoLista);
+    $('#cardapio-lista-enviar')?.addEventListener('click', enviarListaSemana);
 
     document.addEventListener('keydown', (ev) => {
       if (ev.key === 'Escape' && sheetAberto()) fecharSheet();

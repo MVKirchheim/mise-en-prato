@@ -1583,31 +1583,29 @@ class EnviarIngredientesLista(BaseModel):
     lista_id: int | None = None
     nome_nova_lista: str | None = None
     ingrediente_ids: list[int] = []
+    # Escala escolhida no Modo Cozinha. Texto ("0.5") ou inteiro, nunca número
+    # com vírgula do JSON: float já chega arredondado em binário.
+    fator: str | StrictInt | None = None
 
 
 class ParserIngredientesEntrada(BaseModel):
     texto: str
 
 
-def _obter_ou_criar_produto_para_ingrediente(
-    con: sqlite3.Connection, nome: str, gtin: str | None = None
-) -> int:
-    if gtin:
-        row = con.execute("SELECT id FROM produto WHERE gtin = ? LIMIT 1", (gtin,)).fetchone()
-        if row:
-            return row["id"]
-    row = con.execute(
-        "SELECT id FROM produto WHERE UPPER(descricao_canonica) = UPPER(?) LIMIT 1",
-        (nome.strip(),),
-    ).fetchone()
-    if row:
-        return row["id"]
-    with con:
-        cur = con.execute(
-            "INSERT INTO produto (descricao_canonica, gtin, acompanhar) VALUES (?, ?, 0)",
-            (nome.strip().upper(), gtin),
-        )
-        return cur.lastrowid
+FATOR_MAXIMO = Decimal("20")
+
+
+def _ler_fator(bruto: str | int | None) -> Decimal:
+    """A escala do envio: Decimal maior que zero e até 20; 1 se não veio."""
+    if bruto is None:
+        return Decimal("1")
+    try:
+        fator = Decimal(str(bruto).strip())
+    except InvalidOperation as erro:
+        raise HTTPException(422, "Escala inválida: use um número como 0.5 ou 2.") from erro
+    if not fator.is_finite() or fator <= 0 or fator > FATOR_MAXIMO:
+        raise HTTPException(422, "A escala deve ser maior que zero e no máximo 20.")
+    return fator
 
 
 @app.get("/api/receitas")
@@ -1794,30 +1792,48 @@ async def parse_ingredientes_endpoint(dados: ParserIngredientesEntrada, _: Morad
 async def enviar_para_lista(
     receita_id: int, dados: EnviarIngredientesLista, quem: Morador, con: Banco
 ):
+    """Leva ingredientes escolhidos da receita para a lista, na escala da tela.
+
+    A quantidade da receita vai para a nota do item ("500 g (Bolo)"); a de
+    compra é 1 para produto novo e fica como estava para o que já está na lista.
+    """
     if config().app_mode == "demo":
         raise HTTPException(403, "Operação desativada na demonstração pública.")
+    fator = _ler_fator(dados.fator)
     rec = receitas.obter_receita(con, receita_id)
     if rec is None:
         raise HTTPException(404, "Receita não encontrada")
 
-    lista_id = dados.lista_id
-    if not lista_id:
-        nome_lista = dados.nome_nova_lista or f"Receita: {rec.nome}"
-        lista_id = listas.criar(con, nome_lista, quem)
-
     ingredientes_map = {i.id: i for i in rec.ingredientes}
-    adicionados = 0
-    for i_id in dados.ingrediente_ids:
-        ing = ingredientes_map.get(i_id)
-        if not ing:
-            continue
-        p_id = _obter_ou_criar_produto_para_ingrediente(
-            con, ing.nome_ingrediente, ing.gtin_associado
+    escolhidos = [
+        ingredientes_map[i] for i in dict.fromkeys(dados.ingrediente_ids) if i in ingredientes_map
+    ]
+    if not escolhidos:
+        # sem isto, uma seleção vazia (ou só de ids alheios) criava uma lista vazia
+        raise HTTPException(422, "Nenhum ingrediente escolhido pertence a esta receita.")
+    pedidos = []
+    for ing in escolhidos:
+        # piso de um centésimo: ½x de "0,01 g" não pode virar "0 g" na nota
+        quantidade = max(receitas.escalar_quantidade(ing.quantidade, fator), Decimal("0.01"))
+        pedidos.append(
+            listas.Pedido(
+                nome=ing.nome_ingrediente,
+                gtin=ing.gtin_associado,
+                partes=[(quantidade, ing.unidade)],
+                receitas=[rec.nome],
+            )
         )
-        listas.por_produto(con, lista_id, p_id, ing.quantidade)
-        adicionados += 1
-
-    return responder({"ok": True, "lista_id": lista_id, "adicionados": adicionados})
+    try:
+        resultado = listas.enviar_de_receitas(
+            con,
+            pedidos,
+            quem,
+            lista_id=dados.lista_id or None,
+            nome_nova_lista=(dados.nome_nova_lista or "").strip() or f"Receita: {rec.nome}",
+        )
+    except listas.ListaNaoEncontrada as erro:
+        raise HTTPException(404, "Lista não encontrada") from erro
+    return responder({"ok": True, **resultado})
 
 
 # ── cardápio semanal ─────────────────────────────────────────────────────────
@@ -1843,6 +1859,14 @@ class EntradaCardapioAlteracao(BaseModel):
     feito: StrictBool | None = None
 
 
+def _dia_da_semana(semana: str) -> date:
+    """A data pedida (AAAA-MM-DD), ou hoje se não veio; 422 se não for data real."""
+    try:
+        return date.fromisoformat(cardapio.validar_data(semana)) if semana else date.today()
+    except ValueError as erro:
+        raise HTTPException(422, str(erro)) from erro
+
+
 @app.get("/api/cardapio")
 async def semana_cardapio(_: Morador, con: Banco, semana: str = ""):
     """A semana (segunda a domingo) que contém `semana`; sem ela, a de hoje.
@@ -1850,11 +1874,7 @@ async def semana_cardapio(_: Morador, con: Banco, semana: str = ""):
     A tela manda a data local do navegador — à noite, no Brasil, o UTC já
     virou o dia, e a semana sairia errada se o servidor adivinhasse.
     """
-    try:
-        dia = date.fromisoformat(cardapio.validar_data(semana)) if semana else date.today()
-    except ValueError as erro:
-        raise HTTPException(422, str(erro)) from erro
-    return responder(cardapio.listar_semana(con, dia))
+    return responder(cardapio.listar_semana(con, _dia_da_semana(semana)))
 
 
 @app.post("/api/cardapio")
@@ -1877,6 +1897,61 @@ async def criar_entrada_cardapio(dados: EntradaCardapioNova, quem: Morador, con:
     except (ValueError, TypeError) as erro:
         raise HTTPException(422, str(erro)) from erro
     return responder(entrada)
+
+
+# As rotas da lista da semana vêm ANTES das de /api/cardapio/{entrada_id}: hoje
+# só PUT e DELETE usam o id, mas a ordem garante que "lista" nunca seja lido
+# como id se um GET por entrada aparecer depois.
+class ListaDaSemana(BaseModel):
+    semana: str
+    chaves: list[str] = []
+    lista_id: StrictInt | None = None
+    nome_nova_lista: str | None = None
+
+
+@app.get("/api/cardapio/lista")
+async def previa_lista_da_semana(_: Morador, con: Banco, semana: str = ""):
+    """O que comprar para as receitas planejadas e ainda não feitas da semana."""
+    return responder(cardapio.lista_da_semana(con, _dia_da_semana(semana)))
+
+
+@app.post("/api/cardapio/lista")
+async def enviar_lista_da_semana(dados: ListaDaSemana, quem: Morador, con: Banco):
+    """Leva para a lista os grupos escolhidos da prévia.
+
+    A prévia é recalculada aqui e só as `chaves` vêm do cliente: quantidade
+    mandada pela tela nunca entra no banco.
+    """
+    if config().app_mode == "demo":
+        raise HTTPException(403, "Edição da lista desativada na demonstração pública.")
+    if not dados.semana:
+        raise HTTPException(422, "Informe a semana (AAAA-MM-DD).")
+    previa = cardapio.lista_da_semana(con, _dia_da_semana(dados.semana))
+    escolhidas = set(dados.chaves)
+    pedidos = [
+        listas.Pedido(
+            nome=g["nome"],
+            gtin=g["gtin"],
+            partes=[(p["quantidade"], p["unidade"]) for p in g["partes"]],
+            receitas=g["receitas"],
+        )
+        for g in previa["grupos"]
+        if g["chave"] in escolhidas
+    ]
+    if not pedidos:
+        raise HTTPException(
+            422, "Nenhum ingrediente escolhido corresponde ao cardápio desta semana."
+        )
+    nome = (dados.nome_nova_lista or "").strip() or cardapio.nome_padrao_lista(
+        date.fromisoformat(previa["inicio"]), date.fromisoformat(previa["fim"])
+    )
+    try:
+        resultado = listas.enviar_de_receitas(
+            con, pedidos, quem, lista_id=dados.lista_id, nome_nova_lista=nome
+        )
+    except listas.ListaNaoEncontrada as erro:
+        raise HTTPException(404, "Lista não encontrada") from erro
+    return responder({"ok": True, **resultado})
 
 
 @app.put("/api/cardapio/{entrada_id}")
