@@ -4,6 +4,20 @@
 'use strict';
 
 const $ = (s) => document.querySelector(s);
+/* Texto que vem do banco ou de fora (nome de loja, descrição de produto, sabor,
+   morador, mensagem de erro) passa por aqui antes de virar HTML, em texto ou em
+   atributo entre aspas. Não serve para handler inline (onclick="..."): lá o
+   parser decodifica as entidades antes do JS rodar; use data-* e this.dataset.
+   Global de propósito: receitas.js e cardapio.js usam este. */
+const escapar = (texto) => String(texto ?? '')
+  .replace(/&/g, '&amp;')
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;')
+  .replace(/'/g, '&#39;');
+/* Classe CSS montada com dado do banco só por lista branca: fora dela, nenhuma. */
+const classeNutri = (n) => (/^[a-e]$/.test(String(n ?? '').toLowerCase()) ? `nutri-${String(n).toLowerCase()}` : '');
+const classeNova = (g, prefixo = 'nova-') => (/^[1-4]$/.test(String(g ?? '')) ? `${prefixo}${g}` : '');
 const dinheiro = (v) =>
   v == null ? '—' : Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 const quantia = (q) => {
@@ -204,9 +218,9 @@ function cartaoCupom(c, selo) {
     if (i.sabor_adicional) {
       htmlVariante = `
         <div id="linha-sabor-${i.id}" class="linha-sabor-item">
-          <span class="badge-sabor" title="${i.gtin_variante || ''}">🏷️ ${i.sabor_adicional}</span>
-          <button type="button" class="btn-link-edit" title="Alterar sabor"
-                  onclick="abrirInlineSabor(${i.id}, '${c.chave}')">✎</button>
+          <span class="badge-sabor" title="${escapar(i.gtin_variante || '')}">🏷️ ${escapar(i.sabor_adicional)}</span>
+          <button type="button" class="btn-link-edit" title="Alterar sabor" data-chave="${escapar(c.chave)}"
+                  onclick="abrirInlineSabor(${Number(i.id)}, this.dataset.chave)">✎</button>
         </div>
         <div id="inline-sabor-${i.id}" style="display:none"></div>`;
     } else if (comSabor.length > 0) {
@@ -215,17 +229,18 @@ function cartaoCupom(c, selo) {
           <span class="fraca" style="font-size:.76rem">Sabor:</span>
           ${comSabor.map((v) => `
             <button type="button" class="chip-sabor"
-                    onclick="escolherSaborItem(${i.id}, '${v.gtin}', '${(v.sabor || '').replace(/'/g, "\\'")}', '${c.chave}')">${v.sabor}</button>
+                    data-gtin="${escapar(v.gtin)}" data-sabor="${escapar(v.sabor || '')}" data-chave="${escapar(c.chave)}"
+                    onclick="escolherSaborItem(${Number(i.id)}, this.dataset.gtin, this.dataset.sabor, this.dataset.chave)">${escapar(v.sabor)}</button>
           `).join('')}
-          <button type="button" class="chip-sabor outro"
-                  onclick="abrirInlineSabor(${i.id}, '${c.chave}')">+ Outro</button>
+          <button type="button" class="chip-sabor outro" data-chave="${escapar(c.chave)}"
+                  onclick="abrirInlineSabor(${Number(i.id)}, this.dataset.chave)">+ Outro</button>
         </div>
         <div id="inline-sabor-${i.id}" style="display:none"></div>`;
     } else {
       htmlVariante = `
         <div id="linha-sabor-${i.id}" class="linha-sabor-item">
-          <button type="button" class="btn-escolher-sabor"
-                  onclick="abrirInlineSabor(${i.id}, '${c.chave}')">+ Sabor</button>
+          <button type="button" class="btn-escolher-sabor" data-chave="${escapar(c.chave)}"
+                  onclick="abrirInlineSabor(${Number(i.id)}, this.dataset.chave)">+ Sabor</button>
         </div>
         <div id="inline-sabor-${i.id}" style="display:none"></div>`;
     }
@@ -233,8 +248,8 @@ function cartaoCupom(c, selo) {
     return `
       <tr>
         <td>
-          <div>${i.descricao}</div>
-          <div class="fraca">${quantia(i.quantidade)} ${i.unidade || ''} × ${dinheiro(i.valor_unitario)}</div>
+          <div>${escapar(i.descricao)}</div>
+          <div class="fraca">${quantia(i.quantidade)} ${escapar(i.unidade || '')} × ${dinheiro(i.valor_unitario)}</div>
           ${htmlVariante}
         </td>
         <td class="num" style="vertical-align:top">${dinheiro(i.valor_total)}</td>
@@ -243,16 +258,17 @@ function cartaoCupom(c, selo) {
 
   return `
     <div class="cartao" style="margin-top:.9rem">
-      <div class="linha"><strong>${c.loja}</strong>
+      <div class="linha"><strong>${escapar(c.loja)}</strong>
         <span class="selo">${selo}</span></div>
-      <div class="fraca">${c.municipio || ''} · ${dia(c.emitido_em)} · ${c.forma_pagamento || ''}</div>
+      <div class="fraca">${escapar(c.municipio || '')} · ${dia(c.emitido_em)} · ${escapar(c.forma_pagamento || '')}</div>
       ${c.avisos.length ? `<div class="estado ruim" style="margin:.7rem 0">
-          ${c.avisos.map((a) => `• ${a}`).join('<br>')}</div>` : ''}
+          ${c.avisos.map((a) => `• ${escapar(a)}`).join('<br>')}</div>` : ''}
       ${c.foto ? `
         <div style="margin:.7rem 0">
-          <button type="button" class="acao" onclick="mudarAba('revisao');abrirFotoDestaque('${c.foto}','Foto do cupom','${c.chave}')"
+          <button type="button" class="acao" data-foto="${escapar(c.foto)}" data-chave="${escapar(c.chave)}"
+                  onclick="mudarAba('revisao');abrirFotoDestaque(this.dataset.foto,'Foto do cupom',this.dataset.chave)"
                   style="font-size:.82rem;padding:.35rem .7rem">
-            📷 Consultar foto salva (${c.foto})
+            📷 Consultar foto salva (${escapar(c.foto)})
           </button>
         </div>` : ''}
       <table style="margin-top:.7rem">${itens}</table>
@@ -286,7 +302,7 @@ async function carregarDatalistSabores() {
       dl.id = 'lista-sabores-geral';
       document.body.appendChild(dl);
     }
-    dl.innerHTML = (sabores || []).map((s) => `<option value="${s}">`).join('');
+    dl.innerHTML = (sabores || []).map((s) => `<option value="${escapar(s)}">`).join('');
     _saboresCarregados = true;
   } catch (_) {}
 }
@@ -308,13 +324,13 @@ window.abrirInlineSabor = async (itemId, chave) => {
   container.innerHTML = `
     <div class="mini-form-sabor">
       <input type="text" id="input-sabor-inline-${itemId}" list="lista-sabores-geral"
-             placeholder="Ex: Morango, Baunilha..." value="${saborAtual}"
-             class="input-sabor-rapido" autofocus
-             onkeydown="if(event.key==='Enter'){event.preventDefault();salvarSaborRapido(${itemId}, '${chave}');}else if(event.key==='Escape'){fecharInlineSabor(${itemId});}">
-      <button type="button" class="btn-salvar-sabor" onclick="salvarSaborRapido(${itemId}, '${chave}')">Salvar</button>
-      <button type="button" class="btn-fechar-sabor" onclick="fecharInlineSabor(${itemId})">✕</button>
+             placeholder="Ex: Morango, Baunilha..." value="${escapar(saborAtual)}"
+             class="input-sabor-rapido" autofocus data-chave="${escapar(chave)}"
+             onkeydown="if(event.key==='Enter'){event.preventDefault();salvarSaborRapido(${Number(itemId)}, this.dataset.chave);}else if(event.key==='Escape'){fecharInlineSabor(${Number(itemId)});}">
+      <button type="button" class="btn-salvar-sabor" data-chave="${escapar(chave)}" onclick="salvarSaborRapido(${Number(itemId)}, this.dataset.chave)">Salvar</button>
+      <button type="button" class="btn-fechar-sabor" onclick="fecharInlineSabor(${Number(itemId)})">✕</button>
       <div style="width:100%;margin-top:.15rem">
-        <a href="javascript:void(0)" class="link-bipar-avancado" onclick="abrirModalAssociarSabor(${itemId}, '${chave}')">
+        <a href="javascript:void(0)" class="link-bipar-avancado" data-chave="${escapar(chave)}" onclick="abrirModalAssociarSabor(${Number(itemId)}, this.dataset.chave)">
           Opções com GTIN / Bipar código de barras ▾
         </a>
       </div>
@@ -354,9 +370,9 @@ window.salvarSaborRapido = async (itemId, chave) => {
     const linha = document.getElementById(`linha-sabor-${itemId}`);
     if (linha) {
       linha.innerHTML = `
-        <span class="badge-sabor">🏷️ ${sabor}</span>
-        <button type="button" class="btn-link-edit" title="Alterar sabor"
-                onclick="abrirInlineSabor(${itemId}, '${chave}')">✎</button>
+        <span class="badge-sabor">🏷️ ${escapar(sabor)}</span>
+        <button type="button" class="btn-link-edit" title="Alterar sabor" data-chave="${escapar(chave)}"
+                onclick="abrirInlineSabor(${Number(itemId)}, this.dataset.chave)">✎</button>
       `;
     }
     const it = (window._itensCupomAtual || []).find((x) => x.id === itemId);
@@ -381,9 +397,9 @@ window.escolherSaborItem = async (itemId, gtin, sabor, chave) => {
     const linha = document.getElementById(`linha-sabor-${itemId}`);
     if (linha) {
       linha.innerHTML = `
-        <span class="badge-sabor" title="${gtin || ''}">🏷️ ${sabor}</span>
-        <button type="button" class="btn-link-edit" title="Alterar sabor"
-                onclick="abrirInlineSabor(${itemId}, '${chave}')">✎</button>
+        <span class="badge-sabor" title="${escapar(gtin || '')}">🏷️ ${escapar(sabor)}</span>
+        <button type="button" class="btn-link-edit" title="Alterar sabor" data-chave="${escapar(chave)}"
+                onclick="abrirInlineSabor(${Number(itemId)}, this.dataset.chave)">✎</button>
       `;
     }
     const it = (window._itensCupomAtual || []).find((x) => x.id === itemId);
@@ -409,7 +425,7 @@ window.buscarInfoGtin = async (gtin) => {
       }
       const elPrevia = document.getElementById('modal-previa-ean');
       if (elPrevia) {
-        elPrevia.innerHTML = `<span class="badge-sabor" style="margin-top:.3rem;display:inline-block">📦 ${meta.nome || ''}${meta.sabor ? ' · ' + meta.sabor : ''}</span>`;
+        elPrevia.innerHTML = `<span class="badge-sabor" style="margin-top:.3rem;display:inline-block">📦 ${escapar(meta.nome || '')}${meta.sabor ? ' · ' + escapar(meta.sabor) : ''}</span>`;
       }
     }
   } catch (e) {
@@ -444,8 +460,9 @@ window.abrirModalAssociarSabor = (itemId, chave) => {
       <span class="fraca" style="font-size:.8rem;font-weight:600;display:block;margin-bottom:.3rem">Sabores conhecidos desta linha:</span>
       <div style="display:flex;gap:.35rem;flex-wrap:wrap">
         ${variantes.map((v) => `
-          <button type="button" class="chip-sabor" onclick="preencherVarianteModal('${v.gtin}', '${(v.sabor || '').replace(/'/g, "\\'")}')">
-            ${v.sabor}
+          <button type="button" class="chip-sabor" data-gtin="${escapar(v.gtin)}" data-sabor="${escapar(v.sabor || '')}"
+                  onclick="preencherVarianteModal(this.dataset.gtin, this.dataset.sabor)">
+            ${escapar(v.sabor)}
           </button>
         `).join('')}
       </div>
@@ -458,14 +475,14 @@ window.abrirModalAssociarSabor = (itemId, chave) => {
         <strong>Identificar Sabor / EAN</strong>
         <span class="clicavel fraca" style="font-size:1.2rem;padding:.2rem" onclick="document.getElementById('modal-associar-sabor').remove()">✕</span>
       </div>
-      <div class="fraca" style="font-size:.84rem;margin-bottom:.7rem;line-height:1.3">${descricao}</div>
+      <div class="fraca" style="font-size:.84rem;margin-bottom:.7rem;line-height:1.3">${escapar(descricao)}</div>
 
       ${chipsConhecidos}
 
       <div style="margin-bottom:.6rem">
         <label style="font-size:.82rem;font-weight:600;display:block;margin-bottom:.25rem">Código de Barras (EAN / GTIN):</label>
         <div style="display:flex;gap:.4rem">
-          <input type="text" id="modal-input-gtin" inputmode="numeric" placeholder="789... (8 a 14 dígitos)" value="${gtinAtual}" style="flex:1" autofocus
+          <input type="text" id="modal-input-gtin" inputmode="numeric" placeholder="789... (8 a 14 dígitos)" value="${escapar(gtinAtual)}" style="flex:1" autofocus
                  onchange="buscarInfoGtin(this.value)">
           <label class="acao clicavel" style="padding:.4rem .7rem;font-size:.84rem;cursor:pointer;display:inline-flex;align-items:center;margin:0" title="Escanear com a câmera">
             📷 Bipar
@@ -477,7 +494,7 @@ window.abrirModalAssociarSabor = (itemId, chave) => {
 
       <div style="margin-bottom:.7rem">
         <label style="font-size:.82rem;font-weight:600;display:block;margin-bottom:.25rem">Nome do Sabor / Variante:</label>
-        <input type="text" id="modal-input-sabor" placeholder="Ex: Chocolatto, Classic, Morango..." value="${saborAtual}">
+        <input type="text" id="modal-input-sabor" placeholder="Ex: Chocolatto, Classic, Morango..." value="${escapar(saborAtual)}">
         <div class="fraca" style="font-size:.76rem;margin-top:.2rem">Preencha o sabor ou digite o GTIN da embalagem para obter automaticamente do Open Food Facts.</div>
       </div>
 
@@ -493,7 +510,7 @@ window.abrirModalAssociarSabor = (itemId, chave) => {
       </div>
 
       <div style="display:flex;gap:.5rem">
-        <button type="button" class="acao" style="flex:1" onclick="confirmarAssociarSabor(${itemId}, '${chave}')">Salvar</button>
+        <button type="button" class="acao" style="flex:1" data-chave="${escapar(chave)}" onclick="confirmarAssociarSabor(${Number(itemId)}, this.dataset.chave)">Salvar</button>
         <button type="button" class="btn-secundario" onclick="document.getElementById('modal-associar-sabor').remove()">Cancelar</button>
       </div>
     </div>
@@ -798,23 +815,14 @@ carregadores.enviar = async () => {
     </div>` : '';
   $('#lista-cupons').innerHTML = cupons.length
     ? cupons.map((c) => `
-        <div class="linha clicavel" onclick="verCupom('${c.chave}')">
-          <div>${c.loja}<div class="fraca">${dia(c.emitido_em)} · ${c.itens} itens · ${c.morador || '—'}${c.completo ? '' : ' · <span style="color:var(--alerta)">incompleto</span>'}</div></div>
+        <div class="linha clicavel" data-chave="${escapar(c.chave)}" onclick="verCupom(this.dataset.chave)">
+          <div>${escapar(c.loja)}<div class="fraca">${dia(c.emitido_em)} · ${escapar(c.itens)} itens · ${escapar(c.morador || '—')}${c.completo ? '' : ' · <span style="color:var(--alerta)">incompleto</span>'}</div></div>
           <strong class="num">${dinheiro(c.valor_pago)}</strong>
         </div>`).join('')
     : '<div class="fraca">Nenhum cupom ainda. Fotografe o QR do próximo.</div>';
 };
 
 /* ── gastos ───────────────────────────────────────────────────────────────── */
-/* Texto que vem do banco (nome de loja, descrição de produto, morador) passa
-   por aqui antes de virar HTML. */
-const escapar = (texto) => String(texto ?? '')
-  .replace(/&/g, '&amp;')
-  .replace(/</g, '&lt;')
-  .replace(/>/g, '&gt;')
-  .replace(/"/g, '&quot;')
-  .replace(/'/g, '&#39;');
-
 const MESES_EXTENSO = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho',
   'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
 const MAIORES_PADRAO = 15;
@@ -895,14 +903,14 @@ function renderNutri(nutri) {
     const totalClass = Number(nutri.total_classificado);
     const fatias = nutri.por_nova.map((g) => {
       const pct = (Number(g.total) / totalClass) * 100;
-      return `<div class="fatia-nova fatia-nova-${g.grupo}" style="width:${pct.toFixed(1)}%" title="${g.rotulo}: ${pct.toFixed(0)}%"></div>`;
+      return `<div class="fatia-nova ${classeNova(g.grupo, 'fatia-nova-')}" style="width:${pct.toFixed(1)}%" title="${escapar(g.rotulo)}: ${pct.toFixed(0)}%"></div>`;
     }).join('');
 
     const linhasGrupos = nutri.por_nova.map((g) => {
       const pct = ((Number(g.total) / totalClass) * 100).toFixed(0);
       return `
         <div class="linha" style="font-size:.85rem;margin-top:.35rem">
-          <span><span class="badge-nova nova-${g.grupo}">NOVA ${g.grupo}</span> ${g.rotulo}</span>
+          <span><span class="badge-nova ${classeNova(g.grupo)}">NOVA ${escapar(g.grupo)}</span> ${escapar(g.rotulo)}</span>
           <span class="num">${dinheiro(g.total)} <span class="fraca">(${pct}%)</span></span>
         </div>`;
     }).join('');
@@ -912,7 +920,7 @@ function renderNutri(nutri) {
         <div class="linha">
           <strong>Qualidade Alimentar da Cesta</strong>
           <span class="selo ${nutri.percentual_ultraprocessados > 40 ? 'aviso' : ''}">
-            ${nutri.percentual_ultraprocessados}% ultraprocessados
+            ${escapar(nutri.percentual_ultraprocessados)}% ultraprocessados
           </span>
         </div>
         <div class="barra-nutri-progresso">${fatias}</div>
@@ -1182,21 +1190,22 @@ function renderColunaProdutoUnificar(p, titulo, parId) {
         : `${dinheiro(p.menor_preco / 100)} a ${dinheiro(p.maior_preco / 100)}`)
     : '';
   const gtinHtml = p.gtin
-    ? `<span class="selo" style="font-family:monospace;font-size:.76rem">${p.gtin}</span>`
+    ? `<span class="selo" style="font-family:monospace;font-size:.76rem">${escapar(p.gtin)}</span>`
     : '<span class="fraca" style="font-size:.76rem">Sem código GTIN</span>';
   const sufixoPainel = parId ? `${parId}-${p.id}` : `${p.id}`;
   const btnBuscarMenorPreco = !p.gtin
     ? `
       <div style="margin-top:.3rem">
         <button type="button" class="btn-secundario" style="padding:.2rem .45rem;font-size:.76rem;color:var(--destaque,#3b82f6)"
-                onclick="buscarCandidatosUnificacao(${p.id}, '${sufixoPainel}')">🔍 Buscar no Menor Preço</button>
-        <div id="painel-candidatos-col-${sufixoPainel}" style="display:none;margin-top:.4rem"></div>
+                data-sufixo="${escapar(sufixoPainel)}"
+                onclick="buscarCandidatosUnificacao(${Number(p.id)}, this.dataset.sufixo)">🔍 Buscar no Menor Preço</button>
+        <div id="painel-candidatos-col-${escapar(sufixoPainel)}" style="display:none;margin-top:.4rem"></div>
       </div>`
     : '';
   const saboresHtml = (p.sabores && p.sabores.length)
     ? `
     <div style="display:flex;gap:.25rem;flex-wrap:wrap;margin-top:.2rem">
-      ${p.sabores.map((s) => `<span class="badge-sabor" style="font-size:.72rem;padding:.1rem .35rem">🏷️ ${s}</span>`).join('')}
+      ${p.sabores.map((s) => `<span class="badge-sabor" style="font-size:.72rem;padding:.1rem .35rem">🏷️ ${escapar(s)}</span>`).join('')}
     </div>`
     : '';
 
@@ -1204,16 +1213,16 @@ function renderColunaProdutoUnificar(p, titulo, parId) {
     <div class="col-produto-unificar">
       <div class="fraca" style="font-size:.74rem;font-weight:600;text-transform:uppercase">${titulo}</div>
       <div class="col-produto-cabecalho">
-        ${p.foto_url ? `<img src="${p.foto_url}" class="col-produto-thumb" alt="${p.descricao}" loading="lazy">` : ''}
+        ${p.foto_url ? `<img src="${escapar(p.foto_url)}" class="col-produto-thumb" alt="${escapar(p.descricao)}" loading="lazy">` : ''}
         <div style="flex:1;min-width:0">
-          <strong style="display:block;font-size:.9rem;line-height:1.25">${p.descricao}</strong>
-          ${p.marca ? `<span class="fraca" style="font-size:.78rem">${p.marca}</span> · ` : ''}${gtinHtml}
+          <strong style="display:block;font-size:.9rem;line-height:1.25">${escapar(p.descricao)}</strong>
+          ${p.marca ? `<span class="fraca" style="font-size:.78rem">${escapar(p.marca)}</span> · ` : ''}${gtinHtml}
         </div>
       </div>
       <div class="fraca" style="font-size:.78rem;margin-top:.2rem">
         📦 ${comprasTxt}${faixaPreco ? ` · ${faixaPreco}` : ''}
       </div>
-      ${p.ultima_loja ? `<div class="fraca" style="font-size:.74rem">Última: ${p.ultima_loja} ${p.ultima_data ? `(${dia(p.ultima_data)})` : ''}</div>` : ''}
+      ${p.ultima_loja ? `<div class="fraca" style="font-size:.74rem">Última: ${escapar(p.ultima_loja)} ${p.ultima_data ? `(${dia(p.ultima_data)})` : ''}</div>` : ''}
       ${saboresHtml}
       ${btnBuscarMenorPreco}
     </div>
@@ -1241,27 +1250,31 @@ window.buscarCandidatosUnificacao = async (produtoId, sufixoPainel) => {
     painel.innerHTML = `
       <div style="background:var(--painel);border:1px solid var(--borda);border-radius:6px;padding:.5rem;max-height:16rem;overflow-y:auto">
         <div class="fraca" style="font-size:.72rem;font-weight:600;margin-bottom:.3rem">Clique em 'Usar' para atrelar GTIN e loja:</div>
-        ${candidatos.map((c) => `
+        ${candidatos.map((c) => { const k = window._candidatosUnificacao.push(c) - 1; return `
           <div style="display:flex;align-items:center;gap:.4rem;padding:.35rem 0;border-bottom:1px solid var(--borda)">
-            ${c.foto_url ? `<img src="${c.foto_url}" style="width:32px;height:32px;object-fit:cover;border-radius:4px" loading="lazy">` : ''}
+            ${c.foto_url ? `<img src="${escapar(c.foto_url)}" style="width:32px;height:32px;object-fit:cover;border-radius:4px" loading="lazy">` : ''}
             <div style="flex:1;min-width:0;font-size:.78rem">
-              <div style="font-weight:600;line-height:1.2">${c.descricao}</div>
+              <div style="font-weight:600;line-height:1.2">${escapar(c.descricao)}</div>
               <div class="fraca" style="font-family:monospace;font-size:.7rem">
-                ${c.gtin}${c.preco ? ` · ${dinheiro(c.preco)}` : ''}${c.sabor ? ` · <span class="badge-sabor" style="font-size:.68rem">🏷️ ${c.sabor}</span>` : ''}
+                ${escapar(c.gtin)}${c.preco ? ` · ${dinheiro(c.preco)}` : ''}${c.sabor ? ` · <span class="badge-sabor" style="font-size:.68rem">🏷️ ${escapar(c.sabor)}</span>` : ''}
               </div>
             </div>
             <button type="button" class="acao" style="padding:.2rem .45rem;font-size:.74rem"
-                    onclick='atrelarGtinUnificacao(${produtoId}, ${JSON.stringify(c).replace(/'/g, "\\'")})'>
+                    onclick="atrelarGtinUnificacao(${Number(produtoId)}, _candidatosUnificacao[${Number(k)}])">
               Usar
             </button>
           </div>
-        `).join('')}
+        `; }).join('')}
       </div>
     `;
   } catch (err) {
-    painel.innerHTML = `<div class="estado ruim" style="font-size:.76rem">${err.message}</div>`;
+    painel.innerHTML = `<div class="estado ruim" style="font-size:.76rem">${escapar(err.message)}</div>`;
   }
 };
+
+/* Candidato que o botão "Usar" entrega: o objeto fica aqui e o handler inline
+   leva só o índice, nunca o JSON do candidato. */
+window._candidatosUnificacao = [];
 
 window.atrelarGtinUnificacao = async (produtoId, c) => {
   aviso('Atrelando GTIN ao produto e à loja…');
@@ -1291,19 +1304,20 @@ async function desenharUnificacao() {
     return;
   }
 
+  window._paresUnificacao = candidatos;
   $('#unificar').innerHTML = `
     <h2>Parecem o mesmo produto (${candidatos.length})</h2>
     <div class="fraca" style="margin-bottom:.8rem">
       Compare as compras e códigos antes de decidir. Você pode fundir duplicatas idênticas de nota ou agrupar produtos da mesma linha como sabores distintos.
     </div>
     <div class="lista">
-      ${candidatos.map((c) => {
+      ${candidatos.map((c, n) => {
         const idA = c.manter.id;
         const idB = c.juntar.id;
         return `
           <div class="card-unificar-comparativo">
             <div class="linha" style="margin-bottom:.4rem">
-              <span class="selo" style="background:rgba(59,130,246,0.15);color:var(--destaque,#3b82f6)">💡 ${c.motivo}</span>
+              <span class="selo" style="background:rgba(59,130,246,0.15);color:var(--destaque,#3b82f6)">💡 ${escapar(c.motivo)}</span>
             </div>
             <div class="comparativo-colunas">
               ${renderColunaProdutoUnificar(c.manter, 'Produto A (Mais histórico)', `${idA}-${idB}`)}
@@ -1311,7 +1325,7 @@ async function desenharUnificacao() {
             </div>
 
             <div id="painel-agrupar-${idA}-${idB}" class="painel-agrupar-inline" style="display:none">
-              <div style="font-weight:600;font-size:.85rem;margin-bottom:.4rem">Agrupar como Sabores da Linha "${c.manter.descricao}":</div>
+              <div style="font-weight:600;font-size:.85rem;margin-bottom:.4rem">Agrupar como Sabores da Linha "${escapar(c.manter.descricao)}":</div>
               <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:.5rem">
                 <div style="flex:1;min-width:10rem">
                   <label class="fraca" style="font-size:.76rem;display:block">Sabor de A (opcional):</label>
@@ -1323,24 +1337,23 @@ async function desenharUnificacao() {
                 </div>
               </div>
               <div style="display:flex;gap:.4rem">
-                <button type="button" class="acao" onclick="confirmarAgruparComoLinha(${idA}, ${idB})">Confirmar Linha Multissabor</button>
-                <button type="button" class="btn-secundario" onclick="document.getElementById('painel-agrupar-${idA}-${idB}').style.display='none'">Cancelar</button>
+                <button type="button" class="acao" onclick="confirmarAgruparComoLinha(${Number(idA)}, ${Number(idB)})">Confirmar Linha Multissabor</button>
+                <button type="button" class="btn-secundario" onclick="document.getElementById('painel-agrupar-${Number(idA)}-${Number(idB)}').style.display='none'">Cancelar</button>
               </div>
             </div>
 
             <div class="acoes-unificacao">
               <button class="acao" style="background:transparent;color:var(--fraca);border:1px solid var(--borda)"
-                      onclick="recusarPar(${JSON.stringify(c.manter.descricao).replace(/"/g, '&quot;')},
-                                          ${JSON.stringify(c.juntar.descricao).replace(/"/g, '&quot;')})"
+                      onclick="recusarPar(_paresUnificacao[${Number(n)}].manter.descricao, _paresUnificacao[${Number(n)}].juntar.descricao)"
                       title="Dispensar sugestão">
                 ✕ Não têm relação
               </button>
               <div style="flex:1"></div>
               <button class="btn-secundario" style="color:var(--destaque,#3b82f6);border-color:var(--destaque,#3b82f6)"
-                      onclick="abrirPainelAgrupar(${idA}, ${idB})">
+                      onclick="abrirPainelAgrupar(${Number(idA)}, ${Number(idB)})">
                 🏷️ Agrupar como Sabores
               </button>
-              <button class="acao" onclick="unirPar(${idA}, ${idB})">
+              <button class="acao" onclick="unirPar(${Number(idA)}, ${Number(idB)})">
                 🔗 Fundir Duplicata
               </button>
             </div>
@@ -1412,13 +1425,13 @@ async function desenharEnriquecimento() {
       <div class="fraca" style="margin:.3rem 0 .6rem">
         Sem código de barras, itens iguais com escritas diferentes na nota não se reconhecem.
         ${statusCat.disponivel
-          ? `O catálogo satélite local tem ${statusCat.total} produtos em cache com fotos e dados nutricionais.`
+          ? `O catálogo satélite local tem ${escapar(statusCat.total)} produtos em cache com fotos e dados nutricionais.`
           : 'Consulte o Menor Preço sob demanda para identificar os códigos de barras.'}
       </div>
       <div style="display:flex;gap:.5rem;flex-wrap:wrap">
         ${statusCat.disponivel ? `
           <button class="acao" onclick="enriquecerPeloCatalogoLocal()">
-            Sincronizar dados do Catálogo Local (${statusCat.total})
+            Sincronizar dados do Catálogo Local (${escapar(statusCat.total)})
           </button>` : ''}
         <button class="${statusCat.disponivel ? 'btn-secundario' : 'acao'}" onclick="descobrirCodigos()">
           Consultar Menor Preço (5 por vez)
@@ -1435,14 +1448,14 @@ window.enriquecerPeloCatalogoLocal = async () => {
     const r = await api('/api/enriquecer/local?quantos=100', { method: 'POST' });
     caixa.innerHTML = `
       <div class="estado">
-        ${r.metadados_atualizados ? `<strong>${r.metadados_atualizados} produtos enriquecidos com nutrição/marca</strong> · ` : ''}
-        ${r.identificados.length} novos GTINs · ${r.restantes} pendentes
+        ${r.metadados_atualizados ? `<strong>${escapar(r.metadados_atualizados)} produtos enriquecidos com nutrição/marca</strong> · ` : ''}
+        ${r.identificados.length} novos GTINs · ${escapar(r.restantes)} pendentes
       </div>
-      ${r.identificados.map((p) => `<div class="linha"><span>${p.descricao}</span>
-        <span class="selo">${p.gtin}</span></div>`).join('')}`;
+      ${r.identificados.map((p) => `<div class="linha"><span>${escapar(p.descricao)}</span>
+        <span class="selo">${escapar(p.gtin)}</span></div>`).join('')}`;
     carregadores.produtos();
   } catch (erro) {
-    caixa.innerHTML = `<div class="estado ruim">${erro.message}</div>`;
+    caixa.innerHTML = `<div class="estado ruim">${escapar(erro.message)}</div>`;
   }
 };
 
@@ -1453,16 +1466,16 @@ window.descobrirCodigos = async () => {
     const r = await api('/api/enriquecer?quantos=5', { method: 'POST' });
     caixa.innerHTML = `
       <div class="estado">
-        ${r.identificados.length} identificados${r.teto ? ` · ${r.teto}` : ''}
-        · ${r.restantes} ainda sem código
+        ${r.identificados.length} identificados${r.teto ? ` · ${escapar(r.teto)}` : ''}
+        · ${escapar(r.restantes)} ainda sem código
       </div>
-      ${r.identificados.map((p) => `<div class="linha"><span>${p.descricao}</span>
-        <span class="selo">${p.gtin}</span></div>`).join('')}
-      ${r.sem_certeza.map((p) => `<div class="linha fraca"><span>${p.descricao}</span>
-        <span>${p.motivo}</span></div>`).join('')}`;
+      ${r.identificados.map((p) => `<div class="linha"><span>${escapar(p.descricao)}</span>
+        <span class="selo">${escapar(p.gtin)}</span></div>`).join('')}
+      ${r.sem_certeza.map((p) => `<div class="linha fraca"><span>${escapar(p.descricao)}</span>
+        <span>${escapar(p.motivo)}</span></div>`).join('')}`;
     desenharUnificacao();
   } catch (erro) {
-    caixa.innerHTML = `<div class="estado ruim">${erro.message}</div>`;
+    caixa.innerHTML = `<div class="estado ruim">${escapar(erro.message)}</div>`;
   }
 };
 
@@ -1473,15 +1486,15 @@ carregadores.produtos = async () => {
   const { produtos } = await api('/api/produtos?busca=' + encodeURIComponent($('#busca').value));
   $('#lista-produtos').innerHTML = produtos.length
     ? produtos.map((p) => `
-        <div class="linha clicavel" onclick="verProduto(${p.id})">
+        <div class="linha clicavel" onclick="verProduto(${Number(p.id)})">
           <div>
             <div style="display:flex;align-items:center;gap:.4rem;flex-wrap:wrap">
-              <span>${p.descricao}</span>
-              ${p.marca ? `<span class="fraca" style="font-size:.78rem">· ${p.marca}</span>` : ''}
-              ${p.nutriscore ? `<span class="badge-nutri nutri-${p.nutriscore.toLowerCase()}">${p.nutriscore}</span>` : ''}
-              ${p.nova_group ? `<span class="badge-nova nova-${p.nova_group}">NOVA ${p.nova_group}</span>` : ''}
+              <span>${escapar(p.descricao)}</span>
+              ${p.marca ? `<span class="fraca" style="font-size:.78rem">· ${escapar(p.marca)}</span>` : ''}
+              ${p.nutriscore ? `<span class="badge-nutri ${classeNutri(p.nutriscore)}">${escapar(p.nutriscore)}</span>` : ''}
+              ${p.nova_group ? `<span class="badge-nova ${classeNova(p.nova_group)}">NOVA ${escapar(p.nova_group)}</span>` : ''}
             </div>
-            <div class="fraca">${quanto(p.quantidade, p.unidade)} em ${p.compras}
+            <div class="fraca">${escapar(quanto(p.quantidade, p.unidade))} em ${escapar(p.compras)}
               ${p.compras > 1 ? 'compras' : 'compra'} · último ${dinheiro(p.ultimo)}
               ${p.gtin ? '' : '· <span class="selo">sem código de barras</span>'}</div>
           </div>
@@ -1520,7 +1533,7 @@ function renderizarGraficoHistorico(p) {
     return `
       <div class="grafico-fallback-um">
         <div class="fraca">
-          Apenas 1 compra registrada (${dia(u.data)} por <strong>${dinheiro(u.valor_unitario)}</strong> no ${u.loja || 'mercado'}).
+          Apenas 1 compra registrada (${dia(u.data)} por <strong>${dinheiro(u.valor_unitario)}</strong> no ${escapar(u.loja || 'mercado')}).
           O gráfico de tendência de preço será desenhado a partir da 2ª compra da casa.
         </div>
       </div>`;
@@ -1712,8 +1725,8 @@ function ativarInteracaoGraficoHistorico(p) {
     tooltip.hidden = false;
     tooltip.innerHTML = `
       <div style="font-weight:700;font-size:.95rem;color:var(--verde)">${dinheiro(pt.valor_unitario)}</div>
-      <div style="font-size:.8rem;color:var(--tinta);margin-top:2px">${dia(pt.data)} · ${pt.loja || 'loja não informada'}</div>
-      <div style="font-size:.75rem;color:var(--fraca)">Qtd: ${quantia(pt.quantidade)} ${pt.unidade || ''} (total ${dinheiro(pt.valor_total)})</div>`;
+      <div style="font-size:.8rem;color:var(--tinta);margin-top:2px">${dia(pt.data)} · ${escapar(pt.loja || 'loja não informada')}</div>
+      <div style="font-size:.75rem;color:var(--fraca)">Qtd: ${quantia(pt.quantidade)} ${escapar(pt.unidade || '')} (total ${dinheiro(pt.valor_total)})</div>`;
 
     const pctX = (closest.x / W) * 100;
     const pctY = (closest.y / H) * 100;
@@ -1753,33 +1766,33 @@ window.verProduto = async (id) => {
   const p = await api('/api/produto/' + id);
   window._produtoAtualCompras = p.compras || [];
   const compras = p.compras.map((c) => {
-    const saborBadge = c.sabor_adicional ? `<span class="badge-sabor" style="margin-left:.3rem;font-size:.72rem">🏷️ ${c.sabor_adicional}</span>` : '';
-    const codLojaInfo = c.codigo_loja ? `<span class="fraca" style="margin-left:.4rem;font-size:.75rem">PLU: ${c.codigo_loja}</span>` : '';
+    const saborBadge = c.sabor_adicional ? `<span class="badge-sabor" style="margin-left:.3rem;font-size:.72rem">🏷️ ${escapar(c.sabor_adicional)}</span>` : '';
+    const codLojaInfo = c.codigo_loja ? `<span class="fraca" style="margin-left:.4rem;font-size:.75rem">PLU: ${escapar(c.codigo_loja)}</span>` : '';
     return `
-      <tr><td>${dia(c.data)}${saborBadge}<div class="fraca">${c.loja}${codLojaInfo}</div></td>
-          <td class="num">${dinheiro(c.valor_unitario)}<div class="fraca">${quantia(c.quantidade)} ${c.unidade || ''}</div></td></tr>`;
+      <tr><td>${dia(c.data)}${saborBadge}<div class="fraca">${escapar(c.loja)}${codLojaInfo}</div></td>
+          <td class="num">${dinheiro(c.valor_unitario)}<div class="fraca">${quantia(c.quantidade)} ${escapar(c.unidade || '')}</div></td></tr>`;
   }).join('');
   const graficoHtml = renderizarGraficoHistorico(p);
   $('#produto-detalhe').innerHTML = `
     <div class="cartao" style="margin-top:.9rem">
       <div style="display:flex;gap:.8rem;align-items:center;margin-bottom:.6rem">
-        ${p.foto_url ? `<img src="${p.foto_url}" alt="${p.descricao}" class="produto-thumb" loading="lazy">` : ''}
+        ${p.foto_url ? `<img src="${escapar(p.foto_url)}" alt="${escapar(p.descricao)}" class="produto-thumb" loading="lazy">` : ''}
         <div style="flex:1">
           <div class="linha">
-            <strong>${p.descricao}</strong>
-            ${p.gtin ? `<span class="selo">${p.gtin}</span>` : ''}
+            <strong>${escapar(p.descricao)}</strong>
+            ${p.gtin ? `<span class="selo">${escapar(p.gtin)}</span>` : ''}
           </div>
           <div style="display:flex;gap:.4rem;align-items:center;margin-top:.25rem;flex-wrap:wrap">
-            ${p.marca ? `<span class="fraca" style="font-size:.82rem">${p.marca}</span>` : ''}
-            ${p.nutriscore ? `<span class="badge-nutri nutri-${p.nutriscore.toLowerCase()}">Nutri-Score ${p.nutriscore}</span>` : ''}
-            ${p.nova_group ? `<span class="badge-nova nova-${p.nova_group}">NOVA ${p.nova_group}</span>` : ''}
+            ${p.marca ? `<span class="fraca" style="font-size:.82rem">${escapar(p.marca)}</span>` : ''}
+            ${p.nutriscore ? `<span class="badge-nutri ${classeNutri(p.nutriscore)}">Nutri-Score ${escapar(p.nutriscore)}</span>` : ''}
+            ${p.nova_group ? `<span class="badge-nova ${classeNova(p.nova_group)}">NOVA ${escapar(p.nova_group)}</span>` : ''}
           </div>
         </div>
       </div>
       <div class="linha" style="margin-top:.6rem">
         <span class="fraca">comprado</span>
-        <span class="num">${quanto(p.quantidade_total, p.unidade) || '—'}
-          em ${p.total_compras} ${p.total_compras > 1 ? 'compras' : 'compra'}</span></div>
+        <span class="num">${escapar(quanto(p.quantidade_total, p.unidade)) || '—'}
+          em ${escapar(p.total_compras)} ${p.total_compras > 1 ? 'compras' : 'compra'}</span></div>
       <div class="linha">
         <span class="fraca">menor pago</span><span class="num">${dinheiro(p.menor_pago)}</span></div>
       <div class="linha"><span class="fraca">mediana</span>
@@ -1792,28 +1805,28 @@ window.verProduto = async (id) => {
           ${p.variantes.map(v => `
             <div class="cartao-variante ${v.eh_padrao ? 'eh-padrao' : ''}">
               <div class="variante-cabecalho">
-                ${v.foto_url ? `<img src="${v.foto_url}" class="produto-thumb" alt="${v.sabor || v.nome}" loading="lazy">` : ''}
+                ${v.foto_url ? `<img src="${escapar(v.foto_url)}" class="produto-thumb" alt="${escapar(v.sabor || v.nome)}" loading="lazy">` : ''}
                 <div style="flex:1;min-width:0">
-                  <div style="font-weight:600;font-size:.92rem;line-height:1.2">${v.sabor || v.nome}</div>
-                  <div class="fraca" style="font-family:monospace;font-size:.78rem">${v.gtin}</div>
+                  <div style="font-weight:600;font-size:.92rem;line-height:1.2">${escapar(v.sabor || v.nome)}</div>
+                  <div class="fraca" style="font-family:monospace;font-size:.78rem">${escapar(v.gtin)}</div>
                 </div>
               </div>
               <div style="display:flex;gap:.3rem;align-items:center;flex-wrap:wrap;margin:.2rem 0">
                 ${v.eh_padrao ? '<span class="selo" style="background:var(--terracota);color:#fff;font-weight:600">Padrão</span>' : ''}
-                ${v.nutriscore ? `<span class="badge-nutri nutri-${v.nutriscore.toLowerCase()}">${v.nutriscore}</span>` : ''}
-                ${v.nova_group ? `<span class="badge-nova nova-${v.nova_group}">NOVA ${v.nova_group}</span>` : ''}
+                ${v.nutriscore ? `<span class="badge-nutri ${classeNutri(v.nutriscore)}">${escapar(v.nutriscore)}</span>` : ''}
+                ${v.nova_group ? `<span class="badge-nova ${classeNova(v.nova_group)}">NOVA ${escapar(v.nova_group)}</span>` : ''}
               </div>
-              <div class="variante-acoes">
-                ${!v.eh_padrao ? `<button class="btn-secundario" style="padding:.2rem .5rem;font-size:.78rem" onclick="definirVariantePadrao(${p.id}, '${v.gtin}')">★ Tornar padrão</button>` : '<span></span>'}
-                <button class="btn-secundario" style="padding:.2rem .5rem;font-size:.78rem;color:var(--destaque,#3b82f6)" onclick="abrirModalDesmembrar(${p.id}, '${v.gtin}', '${(v.sabor || v.nome || '').replace(/'/g, "\\'")}')" title="Separar em produto autônomo">Separar Produto</button>
-                <button class="btn-secundario" style="padding:.2rem .5rem;font-size:.78rem;color:var(--alerta)" onclick="removerVariante(${p.id}, '${v.gtin}')" title="Desvincular sabor">Remover</button>
+              <div class="variante-acoes" data-gtin="${escapar(v.gtin)}" data-sabor="${escapar(v.sabor || v.nome || '')}">
+                ${!v.eh_padrao ? `<button class="btn-secundario" style="padding:.2rem .5rem;font-size:.78rem" onclick="definirVariantePadrao(${Number(p.id)}, this.parentElement.dataset.gtin)">★ Tornar padrão</button>` : '<span></span>'}
+                <button class="btn-secundario" style="padding:.2rem .5rem;font-size:.78rem;color:var(--destaque,#3b82f6)" onclick="abrirModalDesmembrar(${Number(p.id)}, this.parentElement.dataset.gtin, this.parentElement.dataset.sabor)" title="Separar em produto autônomo">Separar Produto</button>
+                <button class="btn-secundario" style="padding:.2rem .5rem;font-size:.78rem;color:var(--alerta)" onclick="removerVariante(${Number(p.id)}, this.parentElement.dataset.gtin)" title="Desvincular sabor">Remover</button>
               </div>
             </div>
           `).join('')}
         </div>
         <div style="margin-top:.6rem;display:flex;gap:.5rem;flex-wrap:wrap">
-          <button class="btn-secundario" onclick="mostrarInputNovoSabor(${p.id})">+ Adicionar sabor à linha</button>
-          <button class="btn-secundario" onclick="buscarCandidatosGtin(${p.id})">Buscar mais sabores (Menor Preço)</button>
+          <button class="btn-secundario" onclick="mostrarInputNovoSabor(${Number(p.id)})">+ Adicionar sabor à linha</button>
+          <button class="btn-secundario" onclick="buscarCandidatosGtin(${Number(p.id)})">Buscar mais sabores (Menor Preço)</button>
         </div>
         <div id="painel-candidatos-${p.id}" style="margin-top:.6rem"></div>
         <div id="painel-novo-sabor-${p.id}" style="margin-top:.4rem"></div>
@@ -1827,8 +1840,8 @@ window.verProduto = async (id) => {
             Sem o código GTIN, este produto não se unifica com outros mercados e não possui perfil nutricional.
           </div>
           <div style="display:flex;gap:.5rem;flex-wrap:wrap">
-            <button class="acao" onclick="buscarCandidatosGtin(${p.id})">Buscar candidatos (Menor Preço)</button>
-            <button class="btn-secundario" onclick="mostrarInputGtinManual(${p.id})">Digitar código da embalagem</button>
+            <button class="acao" onclick="buscarCandidatosGtin(${Number(p.id)})">Buscar candidatos (Menor Preço)</button>
+            <button class="btn-secundario" onclick="mostrarInputGtinManual(${Number(p.id)})">Digitar código da embalagem</button>
           </div>
           <div id="painel-candidatos-${p.id}" style="margin-top:.6rem"></div>
         </div>
@@ -1855,23 +1868,23 @@ window.buscarCandidatosGtin = async (id) => {
     painel.innerHTML = `
       <div class="fraca" style="margin-bottom:.4rem">Selecione os sabores/produtos correspondentes:</div>
       <div style="margin-bottom:.6rem;display:flex;gap:.5rem;flex-wrap:wrap">
-        <button class="acao" onclick="salvarVariantesSelecionadas(${id})">Salvar como Linha Multissabor</button>
-        <button class="btn-secundario" onclick="selecionarTodosCandidatos(${id}, true)">Marcar todos</button>
-        <button class="btn-secundario" onclick="selecionarTodosCandidatos(${id}, false)">Desmarcar</button>
+        <button class="acao" onclick="salvarVariantesSelecionadas(${Number(id)})">Salvar como Linha Multissabor</button>
+        <button class="btn-secundario" onclick="selecionarTodosCandidatos(${Number(id)}, true)">Marcar todos</button>
+        <button class="btn-secundario" onclick="selecionarTodosCandidatos(${Number(id)}, false)">Desmarcar</button>
       </div>
       ${candidatos.map((c, idx) => `
         <div class="linha" style="margin-bottom:.4rem;padding:.5rem;background:var(--painel);border:1px solid var(--borda);border-radius:6px;align-items:center">
-          <input type="checkbox" id="check-cand-${id}-${idx}" class="check-cand-${id}" value="${c.gtin}" data-nome="${c.descricao}" data-marca="${c.loja || ''}" style="width:auto;margin-right:.5rem" checked>
+          <input type="checkbox" id="check-cand-${id}-${idx}" class="check-cand-${id}" value="${escapar(c.gtin)}" data-nome="${escapar(c.descricao)}" data-marca="${escapar(c.loja || '')}" style="width:auto;margin-right:.5rem" checked>
           <div style="flex:1">
-            <div><strong style="font-family:monospace">${c.gtin}</strong> · ${c.descricao}</div>
-            <div class="fraca">${c.preco ? dinheiro(c.preco) : ''} ${c.loja ? `· ${c.loja}` : ''}</div>
+            <div><strong style="font-family:monospace">${escapar(c.gtin)}</strong> · ${escapar(c.descricao)}</div>
+            <div class="fraca">${c.preco ? dinheiro(c.preco) : ''} ${c.loja ? `· ${escapar(c.loja)}` : ''}</div>
           </div>
-          <button class="btn-secundario" style="padding:.3rem .6rem" onclick="atribuirGtin(${id}, '${c.gtin}')">Usar só este</button>
+          <button class="btn-secundario" style="padding:.3rem .6rem" data-gtin="${escapar(c.gtin)}" onclick="atribuirGtin(${Number(id)}, this.dataset.gtin)">Usar só este</button>
         </div>
       `).join('')}
     `;
   } catch (err) {
-    painel.innerHTML = `<div class="estado ruim">${err.message}</div>`;
+    painel.innerHTML = `<div class="estado ruim">${escapar(err.message)}</div>`;
   }
 };
 
@@ -1902,7 +1915,7 @@ window.salvarVariantesSelecionadas = async (id) => {
     verProduto(id);
     carregadores.produtos();
   } catch (err) {
-    if (painel) painel.innerHTML = `<div class="estado ruim">${err.message}</div>`;
+    if (painel) painel.innerHTML = `<div class="estado ruim">${escapar(err.message)}</div>`;
   }
 };
 
@@ -1913,7 +1926,7 @@ window.mostrarInputNovoSabor = (id) => {
     <div style="display:flex;gap:.5rem;margin-top:.4rem;align-items:center;background:var(--painel);padding:.6rem;border-radius:8px;border:1px solid var(--borda);flex-wrap:wrap">
       <input type="text" id="input-sabor-nome-${id}" placeholder="Nome do sabor (ex: Chocolate)" style="flex:1;min-width:8rem;padding:.4rem">
       <input type="text" id="input-sabor-gtin-${id}" placeholder="Código EAN/GTIN (ex: 789...)" style="flex:1;min-width:8rem;padding:.4rem;font-family:monospace">
-      <button class="acao" onclick="adicionarSaborAvulso(${id})">Salvar sabor</button>
+      <button class="acao" onclick="adicionarSaborAvulso(${Number(id)})">Salvar sabor</button>
     </div>
   `;
 };
@@ -1984,22 +1997,22 @@ window.abrirModalDesmembrar = (produtoId, gtin, saborNome) => {
         <span class="clicavel fraca" style="font-size:1.2rem;padding:.2rem" onclick="document.getElementById('modal-desmembrar').remove()">✕</span>
       </div>
       <div class="fraca" style="font-size:.84rem;margin-bottom:.8rem;line-height:1.4">
-        Esta ação desmembra a variante (EAN <code>${gtin}</code>) em um produto próprio e autônomo no catálogo.
+        Esta ação desmembra a variante (EAN <code>${escapar(gtin)}</code>) em um produto próprio e autônomo no catálogo.
         Útil quando a loja agrupou produtos diferentes sob o mesmo nome fiscal (ex: Iogurte Tradicional vs Grego).
       </div>
 
       <div style="margin-bottom:.8rem">
         <label style="font-size:.82rem;font-weight:600;display:block;margin-bottom:.25rem">Nome do Novo Produto:</label>
-        <input type="text" id="modal-desmembrar-nome" value="${saborNome}" required autofocus>
+        <input type="text" id="modal-desmembrar-nome" value="${escapar(saborNome)}" required autofocus>
       </div>
 
       <div style="margin-bottom:.8rem">
         <label style="font-size:.82rem;font-weight:600;display:block;margin-bottom:.25rem">Código Interno da Loja a Migrar (opcional):</label>
-        <input type="text" id="modal-desmembrar-codloja" value="${codLojaSugerido}" placeholder="Ex: 314121 (PLU da loja)">
+        <input type="text" id="modal-desmembrar-codloja" value="${escapar(codLojaSugerido)}" placeholder="Ex: 314121 (PLU da loja)">
       </div>
 
       <div style="display:flex;gap:.5rem">
-        <button type="button" class="acao" style="flex:1" onclick="confirmarDesmembrar(${produtoId}, '${gtin}')">Confirmar Separação</button>
+        <button type="button" class="acao" style="flex:1" data-gtin="${escapar(gtin)}" onclick="confirmarDesmembrar(${Number(produtoId)}, this.dataset.gtin)">Confirmar Separação</button>
         <button type="button" class="btn-secundario" onclick="document.getElementById('modal-desmembrar').remove()">Cancelar</button>
       </div>
     </div>
@@ -2041,7 +2054,7 @@ window.mostrarInputGtinManual = (id) => {
   painel.innerHTML = `
     <div style="display:flex;gap:.5rem;margin-top:.4rem;align-items:center">
       <input type="text" id="input-gtin-${id}" placeholder="Código EAN/GTIN (ex: 789...)" style="flex:1;padding:.4rem;font-family:monospace">
-      <button class="acao" onclick="atribuirGtin(${id}, $('#input-gtin-${id}').value)">Salvar</button>
+      <button class="acao" onclick="atribuirGtin(${Number(id)}, $('#input-gtin-${Number(id)}').value)">Salvar</button>
     </div>
   `;
 };
@@ -2058,7 +2071,7 @@ window.atribuirGtin = async (id, gtin) => {
     verProduto(id);
     carregadores.produtos();
   } catch (err) {
-    painel.innerHTML = `<div class="estado ruim">${err.message}</div>`;
+    painel.innerHTML = `<div class="estado ruim">${escapar(err.message)}</div>`;
   }
 };
 
@@ -2492,18 +2505,18 @@ window.abrirFotoDestaque = (arquivo, titulo, chave) => {
   let acoesHtml = '';
   if (chave) {
     acoesHtml = `
-      <div class="linha" style="gap:.5rem;flex-wrap:wrap">
-        <button type="button" class="acao" onclick="navigator.clipboard.writeText('${chave}');aviso('Chave copiada!')">
+      <div class="linha" style="gap:.5rem;flex-wrap:wrap" data-chave="${escapar(chave)}">
+        <button type="button" class="acao" onclick="navigator.clipboard.writeText(this.parentElement.dataset.chave);aviso('Chave copiada!')">
           📋 Copiar chave
         </button>
-        <button type="button" class="acao" onclick="preencherChave('${chave}')">
+        <button type="button" class="acao" onclick="preencherChave(this.parentElement.dataset.chave)">
           ⚡ Consultar pela chave
         </button>
         <label class="acao" style="cursor:pointer;display:inline-flex;align-items:center;gap:.3rem;margin:0">
           📄 Enviar HTML
           <input type="file" accept=".html,.htm" hidden onchange="enviarHtmlCupom(this)">
         </label>
-        <button type="button" class="acao" onclick="preencherManual('${chave}')">
+        <button type="button" class="acao" onclick="preencherManual(this.parentElement.dataset.chave)">
           ✍ Registrar total
         </button>
       </div>`;
@@ -2577,7 +2590,7 @@ async function carregarCatalogoDatalist() {
     const { produtos } = await api('/api/produtos');
     const dl = $('#catalogo-produtos-datalist');
     if (dl && produtos) {
-      dl.innerHTML = produtos.map((p) => `<option value="${p.descricao}">`).join('');
+      dl.innerHTML = produtos.map((p) => `<option value="${escapar(p.descricao)}">`).join('');
       catalogoCarregado = true;
     }
   } catch (_) {}
@@ -2639,19 +2652,19 @@ function criarElementoLinhaItem(it) {
   row.innerHTML = `
     <div style="display:flex;gap:.4rem;align-items:center">
       <input type="text" class="item-desc" list="catalogo-produtos-datalist"
-             placeholder="Descrição do produto" value="${desc}" required style="flex:1">
+             placeholder="Descrição do produto" value="${escapar(desc)}" required style="flex:1">
       <button type="button" class="btn-remover-item" onclick="removerLinhaItemBancada(this)" title="Remover item">✕</button>
     </div>
     <div class="bancada-linha-campos">
-      <input type="number" class="item-qtd" step="0.001" min="0.001" value="${qtd}"
+      <input type="number" class="item-qtd" step="0.001" min="0.001" value="${escapar(qtd)}"
              style="width:4.8rem" title="Quantidade" oninput="atualizarSubtotalLinha(this)">
       <select class="item-un" style="width:3.8rem">
         ${['UN', 'KG', 'G', 'LT', 'PC', 'CX', 'PCT', 'PT'].map((u) => `<option value="${u}" ${u === un ? 'selected' : ''}>${u}</option>`).join('')}
       </select>
-      <input type="number" class="item-unit" step="0.01" min="0" value="${unit}"
+      <input type="number" class="item-unit" step="0.01" min="0" value="${escapar(unit)}"
              style="width:5.2rem" placeholder="Unitário" oninput="atualizarSubtotalLinha(this)">
       <span class="fraca" style="font-size:.8rem">=</span>
-      <input type="number" class="item-tot" step="0.01" min="0" value="${tot}"
+      <input type="number" class="item-tot" step="0.01" min="0" value="${escapar(tot)}"
              style="width:5.6rem;font-weight:600" placeholder="Total" oninput="recalcularCentavosBancada()">
     </div>`;
   return row;
@@ -2870,39 +2883,40 @@ carregadores.revisao = async () => {
   } else {
     $('#revisao-cupons').innerHTML = revisao.map((c) => {
       const fotoBtn = c.foto ? `
-        <button type="button" class="acao" onclick="abrirFotoDestaque('${c.foto}', '${c.loja}', '${c.chave}')"
+        <button type="button" class="acao" data-foto="${escapar(c.foto)}" data-loja="${escapar(c.loja)}"
+                onclick="abrirFotoDestaque(this.dataset.foto, this.dataset.loja, this.parentElement.dataset.chave)"
                 style="background:var(--realce);color:var(--tinta);border:1px solid var(--borda)">
-          📷 Foto salva (${c.foto})
+          📷 Foto salva (${escapar(c.foto)})
         </button>` : '';
       return `
         <div class="cartao" style="margin-bottom:.8rem">
           <div class="linha">
-            <strong>${c.loja}</strong>
+            <strong>${escapar(c.loja)}</strong>
             <span class="selo aviso">incompleto</span>
           </div>
-          <div class="fraca">${c.cnpj ? 'CNPJ ' + c.cnpj : ''} · ${dia(c.emitido_em || c.criado_em)} · ${c.morador || '—'}</div>
-          ${c.numero ? `<div class="fraca">NFC-e nº ${c.numero} · Série ${c.serie || '—'}</div>` : ''}
+          <div class="fraca">${c.cnpj ? 'CNPJ ' + escapar(c.cnpj) : ''} · ${dia(c.emitido_em || c.criado_em)} · ${escapar(c.morador || '—')}</div>
+          ${c.numero ? `<div class="fraca">NFC-e nº ${escapar(c.numero)} · Série ${escapar(c.serie || '—')}</div>` : ''}
           ${c.avisos.length ? `<div class="estado ruim" style="margin:.6rem 0">
-              ${c.avisos.map((a) => `• ${a}`).join('<br>')}</div>` : ''}
+              ${c.avisos.map((a) => `• ${escapar(a)}`).join('<br>')}</div>` : ''}
           <div class="linha" style="margin:.6rem 0;font-family:monospace;font-size:.85rem;word-break:break-all">
-            <span>${formatarChave(c.chave)}</span>
+            <span>${escapar(formatarChave(c.chave))}</span>
           </div>
-          <div class="linha" style="gap:.4rem;flex-wrap:wrap">
-            <button type="button" class="acao" onclick="abrirBancadaRevisao('${c.chave}')"
+          <div class="linha" style="gap:.4rem;flex-wrap:wrap" data-chave="${escapar(c.chave)}" data-emitido="${escapar(c.emitido_em || '')}">
+            <button type="button" class="acao" onclick="abrirBancadaRevisao(this.parentElement.dataset.chave)"
                     style="background:var(--terracota);color:#fff;font-weight:600">
               🛠️ Revisar cupom
             </button>
-            <button type="button" class="acao" onclick="navigator.clipboard.writeText('${c.chave}');aviso('Chave copiada!')">
+            <button type="button" class="acao" onclick="navigator.clipboard.writeText(this.parentElement.dataset.chave);aviso('Chave copiada!')">
               📋 Copiar chave
             </button>
-            <button type="button" class="acao" onclick="preencherChave('${c.chave}')">
+            <button type="button" class="acao" onclick="preencherChave(this.parentElement.dataset.chave)">
               ⚡ Consultar pela chave
             </button>
             <label class="acao" style="cursor:pointer;display:inline-flex;align-items:center;gap:.3rem;margin:0">
               📄 Enviar HTML
               <input type="file" accept=".html,.htm" hidden onchange="enviarHtmlCupom(this)">
             </label>
-            <button type="button" class="acao" onclick="preencherManual('${c.chave}', '${c.emitido_em || ''}')">
+            <button type="button" class="acao" onclick="preencherManual(this.parentElement.dataset.chave, this.parentElement.dataset.emitido)">
               ✍ Total manual
             </button>
             ${fotoBtn}
@@ -2922,14 +2936,15 @@ carregadores.revisao = async () => {
     $('#revisao-galeria').innerHTML = falhas.map((f) => {
       const dataFmt = f.data ? dia(f.data) + ' ' + f.data.slice(11, 16) : f.arquivo;
       const temCupom = f.cupom ? `· cupom #${f.cupom.chave.slice(-6)}` : '';
-      const chaveArg = f.cupom ? `'${f.cupom.chave}'` : 'null';
-      const tituloArg = f.cupom ? `'Foto do cupom (${f.cupom.loja})'` : `'Foto ${f.arquivo}'`;
+      const titulo = f.cupom ? `Foto do cupom (${f.cupom.loja})` : `Foto ${f.arquivo}`;
+      const chaveAttr = f.cupom ? ` data-chave="${escapar(f.cupom.chave)}"` : '';
       return `
-        <div class="cartao-falha" onclick="abrirFotoDestaque('${f.arquivo}', ${tituloArg}, ${chaveArg})">
-          <img src="/api/falha/${f.arquivo}" alt="${f.arquivo}" loading="lazy">
+        <div class="cartao-falha" data-arquivo="${escapar(f.arquivo)}" data-titulo="${escapar(titulo)}"${chaveAttr}
+             onclick="abrirFotoDestaque(this.dataset.arquivo, this.dataset.titulo, this.dataset.chave ?? null)">
+          <img src="/api/falha/${escapar(f.arquivo)}" alt="${escapar(f.arquivo)}" loading="lazy">
           <div class="info">
-            <div class="data">${dataFmt}</div>
-            <div class="meta">${f.tamanho_kb} KB ${temCupom}</div>
+            <div class="data">${escapar(dataFmt)}</div>
+            <div class="meta">${escapar(f.tamanho_kb)} KB ${escapar(temCupom)}</div>
           </div>
         </div>`;
     }).join('');
