@@ -46,8 +46,3 @@ services:
       - .:/app
       - ./dados_teste:/dados
 
-
-
-  cupomzinho:
-    extends: dev
-
