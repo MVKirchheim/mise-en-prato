@@ -14,7 +14,7 @@ WEB = Path(__file__).parent.parent / "mise_en_prato" / "web"
 # Variáveis numéricas já usadas inline na aba Lista (ids e quantidades).
 PERMITIDAS = {"i.produto_id", "produto_id", "passo", "p"}
 
-INICIO_HANDLER = re.compile(r"\bon[a-z]+=([\"'])")
+INICIO_HANDLER = re.compile(r"\bon[a-z]+\s*=\s*([\"'])", re.IGNORECASE)
 
 
 def _interpolacoes_em_handlers(fonte: str):
@@ -47,7 +47,14 @@ def test_handlers_inline_sem_dado_interpolado():
 
 
 def test_detector_pega_o_caso_perigoso():
-    perigoso = "`<b onclick=\"ver('${c.chave}')\">` + `<i onclick='f(${Number(x)})'>`"
-    assert [e for _, e in _interpolacoes_em_handlers(perigoso)] == ["c.chave", "Number(x)"]
+    perigoso = (
+        "`<b onclick=\"ver('${c.chave}')\">` + `<i onclick='f(${Number(x)})'>`"
+        " + `<u onClick = \"g('${c.loja}')\">`"
+    )
+    assert [e for _, e in _interpolacoes_em_handlers(perigoso)] == [
+        "c.chave",
+        "Number(x)",
+        "c.loja",
+    ]
     assert not _permitida("c.chave")
     assert _permitida("Number(x)")
