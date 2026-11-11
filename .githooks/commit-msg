@@ -1,0 +1,7 @@
+#!/bin/sh
+# Remove linhas de coautoria de assistentes de IA (Claude/Anthropic) da
+# mensagem de commit. Ativado com: git config core.hooksPath .githooks
+msg="$1"
+tmp="$msg.tmp"
+grep -viE '^[[:space:]]*co-authored-by:.*(claude|anthropic)' "$msg" > "$tmp" || true
+mv "$tmp" "$msg"

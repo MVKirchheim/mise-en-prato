@@ -11,6 +11,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Commits do PR não podem levar coautoria de assistente de IA.
+      - name: sem coautoria de IA nos commits
+        if: github.event_name == 'pull_request'
+        run: |
+          faixa="${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }}"
+          if git log --format=%B "$faixa" | grep -iE '^[[:space:]]*co-authored-by:.*(claude|anthropic)'; then
+            echo "::error::commit com coautoria de IA; remova a linha Co-Authored-By"; exit 1
+          fi
+          echo "ok: nenhuma coautoria de IA"
 
       - uses: actions/setup-python@v5
         with:
@@ -62,4 +74,4 @@ jobs:
           chmod 600 ~/.ssh/id_deploy
           ssh-keyscan -H "$HOST" >> ~/.ssh/known_hosts 2>/dev/null
           ssh -i ~/.ssh/id_deploy -o ConnectTimeout=15 -o StrictHostKeyChecking=accept-new "$USER@$HOST" \
-            "cd ~/srv/mise-en-prato && git pull origin main && docker compose build app && docker compose up -d --force-recreate app"
+            "cd ~/srv/mise-en-prato && git fetch origin main && git reset --hard origin/main && docker compose build app && docker compose up -d --force-recreate app"
