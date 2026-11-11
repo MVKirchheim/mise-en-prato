@@ -8,6 +8,7 @@ nenhuma chamada externa à SEFAZ.
 Uso:
     python -m mise_en_prato.reprocessar [--so-incompletos] [--dry-run]
 """
+
 import argparse
 import logging
 import sys

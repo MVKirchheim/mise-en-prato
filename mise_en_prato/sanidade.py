@@ -27,12 +27,13 @@ E um sinal que NÃO serve, e está aqui escrito para ninguém tentar de novo:
 A postura é recusar a resposta INTEIRA. Não se separa joio de trigo aqui: se um
 sinal disparou, a origem não é confiável e nada dela entra no banco.
 """
+
 import re
 from dataclasses import dataclass, field
 
 from .nfce_pr import normalizar
 
-UF_ESPERADA = "PR"          # é a plataforma do Paraná; loja de outro estado é sinal
+UF_ESPERADA = "PR"  # é a plataforma do Paraná; loja de outro estado é sinal
 MINIMO_PARA_UNIFORMIDADE = 10
 
 
@@ -68,8 +69,10 @@ def canario_passou(resposta: dict, termo: str) -> Veredito:
     alvo = normalizar(termo)
     ecos = sum(1 for p in produtos if normalizar(p.get("desc", "")) == alvo)
     if ecos > len(produtos) / 2:
-        return Veredito(False, [
-            f"{ecos} de {len(produtos)} descrições são o eco literal de um termo inexistente"])
+        return Veredito(
+            False,
+            [f"{ecos} de {len(produtos)} descrições são o eco literal de um termo inexistente"],
+        )
     return Veredito(False, [f"{len(produtos)} resultados para um termo que não existe"])
 
 
@@ -97,8 +100,7 @@ def avaliar(resposta: dict, *, gtin: str = "") -> Veredito:
         descricoes = {p.get("desc") for p in produtos}
         lojas = {(p.get("estabelecimento") or {}).get("nm_emp") for p in produtos}
         if len(descricoes) == 1 and len(lojas) > 3:
-            motivos.append(
-                f"{len(produtos)} resultados de {len(lojas)} lojas com uma descrição só")
+            motivos.append(f"{len(produtos)} resultados de {len(lojas)} lojas com uma descrição só")
 
     # 4. código de barras que não fecha, ou que não é o pedido
     codigos = {re.sub(r"\D", "", p.get("gtin") or "") for p in produtos} - {""}

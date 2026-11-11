@@ -10,6 +10,7 @@ banco. Não há float em nenhum ponto do caminho: soma de gasto tem de fechar no
 centavo. Quantidade segue a mesma ideia, em milésimos, porque o cupom pesa com
 três casas ("0,256 KG").
 """
+
 import sqlite3
 from decimal import Decimal
 from pathlib import Path

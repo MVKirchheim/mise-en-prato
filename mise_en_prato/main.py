@@ -7,6 +7,7 @@ Escuta só no IP da tailnet (quem publica a porta é o compose), então todo mun
 que chega já passou pelo Tailscale — falta apenas perguntar ao tailscaled quem
 é. Ver identidade.py.
 """
+
 import asyncio
 import dataclasses
 import json
@@ -121,8 +122,9 @@ def configurar_log() -> None:
     if log.handlers:
         return
     saida = logging.StreamHandler(sys.stdout)
-    saida.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s",
-                                         "%H:%M:%S"))
+    saida.setFormatter(
+        logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s", "%H:%M:%S")
+    )
     log.addHandler(saida)
     log.setLevel(logging.INFO)
     log.propagate = False
@@ -184,8 +186,8 @@ Morador = Annotated[str, Depends(morador)]
 
 # ── envio de cupom ───────────────────────────────────────────────────────────
 class EnvioCupom(BaseModel):
-    url: str = ""      # a URL inteira do QR Code (é dela que sai o hash de segurança)
-    chave: str = ""    # só serve para reconsultar cupom já guardado
+    url: str = ""  # a URL inteira do QR Code (é dela que sai o hash de segurança)
+    chave: str = ""  # só serve para reconsultar cupom já guardado
 
 
 def _guardar_html(chave: str, html: str) -> None:
@@ -201,7 +203,8 @@ def _gravar(con, chave: str, cupom, quem: str, origem: str, url_qr: str = "") ->
     """Grava o cupom já interpretado, mandando a chave informada prevalecer."""
     if cupom.chave != chave:
         cupom.avisos.append(
-            f"a chave da página ({cupom.chave}) difere da chave informada ({chave})")
+            f"a chave da página ({cupom.chave}) difere da chave informada ({chave})"
+        )
         cupom.chave = chave
     era_novo = cupons.gravar(con, cupom, morador=quem, origem=origem, url_qr=url_qr)
     return {"novo": era_novo, "cupom": cupons.ler(con, chave)}
@@ -216,11 +219,17 @@ def _chave_valida(bruta: str) -> str:
     """A chave normalizada, ou 400 explicando qual das duas coisas deu errado."""
     chave = chave_da_url(bruta)
     if not chave:
-        raise HTTPException(400, "isso não tem 44 dígitos. A chave de acesso está impressa "
-                                 "no cupom, em grupos de quatro, logo acima do QR Code.")
+        raise HTTPException(
+            400,
+            "isso não tem 44 dígitos. A chave de acesso está impressa "
+            "no cupom, em grupos de quatro, logo acima do QR Code.",
+        )
     if not validar_chave(chave):
-        raise HTTPException(400, "o dígito verificador não fecha — algum número saiu trocado. "
-                                 "Confira os 44 dígitos no papel e mande de novo.")
+        raise HTTPException(
+            400,
+            "o dígito verificador não fecha — algum número saiu trocado. "
+            "Confira os 44 dígitos no papel e mande de novo.",
+        )
     return chave
 
 
@@ -256,7 +265,8 @@ async def enviar_cupom(envio: EnvioCupom, quem: Morador, con: Banco):
                 404,
                 "não tenho esse cupom guardado. A rota do QR Code exige o link inteiro, "
                 "com o hash de segurança; para entrar só com a chave, use a consulta "
-                "completa do portal, em /api/cupom/chave — ela pede um captcha.")
+                "completa do portal, em /api/cupom/chave — ela pede um captcha.",
+            )
         return responder({"novo": False, "cupom": guardado})
     raise HTTPException(400, "mande a url do QR Code ou a chave de um cupom já guardado")
 
@@ -305,12 +315,14 @@ async def enviar_foto(quem: Morador, con: Banco, foto: Annotated[UploadFile, Fil
                 )
 
         era_novo = cupons.gravar(con, cupom_ocr, morador=quem, origem="foto")
-        return responder({
-            "novo": era_novo,
-            "cupom": cupons.ler(con, cupom_ocr.chave),
-            "origem": "foto",
-            "ocr": True,
-        })
+        return responder(
+            {
+                "novo": era_novo,
+                "cupom": cupons.ler(con, cupom_ocr.chave),
+                "origem": "foto",
+                "ocr": True,
+            }
+        )
 
     # A foto que não deu certo em nenhum leitor fica guardada
     guardada = _guardar_falha(bruto, foto.filename or "foto")
@@ -318,11 +330,15 @@ async def enviar_foto(quem: Morador, con: Banco, foto: Annotated[UploadFile, Fil
 
     if achados:
         raise HTTPException(
-            422, "achei um código nessa foto, mas não é o QR da nota fiscal. "
-                 "O certo é o quadradinho embaixo, perto da chave de acesso.")
+            422,
+            "achei um código nessa foto, mas não é o QR da nota fiscal. "
+            "O certo é o quadradinho embaixo, perto da chave de acesso.",
+        )
     raise HTTPException(
-        422, "não achei nenhum QR Code legível nem texto de cupom nesta foto. "
-             "A foto ficou guardada no servidor para análise.")
+        422,
+        "não achei nenhum QR Code legível nem texto de cupom nesta foto. "
+        "A foto ficou guardada no servidor para análise.",
+    )
 
 
 @app.post("/api/cupom/html")
@@ -381,7 +397,8 @@ def _cupom_da_chave(con, chave: str, *, total=None, emitido_em=None, avisos: lis
     """
     dados = dados_da_chave(chave)
     linha = con.execute(
-        "SELECT razao FROM estabelecimento WHERE cnpj = ?", (dados["cnpj"],)).fetchone()
+        "SELECT razao FROM estabelecimento WHERE cnpj = ?", (dados["cnpj"],)
+    ).fetchone()
     # Loja já conhecida mantém o nome dela: `_garantir_estabelecimento` sobrescreve
     # a razão social, e cupom digitado não pode rebatizar o mercado de "CNPJ ...".
     razao = linha["razao"] if linha else f"CNPJ {cnpj_formatado(dados['cnpj'])}"
@@ -389,9 +406,12 @@ def _cupom_da_chave(con, chave: str, *, total=None, emitido_em=None, avisos: lis
         chave=chave,
         estabelecimento=Estabelecimento(cnpj=dados["cnpj"], razao=razao),
         emitido_em=emitido_em,
-        numero=dados["numero"], serie=dados["serie"],
-        total=total, valor_pago=total,
-        avisos=list(avisos))
+        numero=dados["numero"],
+        serie=dados["serie"],
+        total=total,
+        valor_pago=total,
+        avisos=list(avisos),
+    )
 
 
 def _total_digitado(texto: str) -> Decimal:
@@ -415,22 +435,24 @@ def _data_digitada(texto: str, chave: str) -> datetime:
     # errado — e gasto no mês errado é pior que cupom faltando.
     if (data.year, data.month) != (dados["ano"], dados["mes"]):
         raise HTTPException(
-            400, f"a chave diz que essa nota é de {dados['mes']:02d}/{dados['ano']}, "
-                 f"e a data mandada é de {data.month:02d}/{data.year}.")
+            400,
+            f"a chave diz que essa nota é de {dados['mes']:02d}/{dados['ano']}, "
+            f"e a data mandada é de {data.month:02d}/{data.year}.",
+        )
     return data
 
 
 class EnvioChave(BaseModel):
-    chave: str                 # os 44 dígitos, com ou sem os espaços do papel
-    desafio: str               # o id devolvido por /api/chave/desafio
-    captcha: str               # as letras que o morador leu na imagem
+    chave: str  # os 44 dígitos, com ou sem os espaços do papel
+    desafio: str  # o id devolvido por /api/chave/desafio
+    captcha: str  # as letras que o morador leu na imagem
     reconsultar: bool = False  # forçar reconsulta no portal
 
 
 class EnvioManual(BaseModel):
     chave: str
     total: str = ""
-    emitido_em: str = ""       # AAAA-MM-DD
+    emitido_em: str = ""  # AAAA-MM-DD
 
 
 # As três rotas abaixo são `def` e não `async def` de propósito: falam com a
@@ -473,11 +495,15 @@ def enviar_chave(envio: EnvioChave, quem: Morador, con: Banco):
     try:
         html = consultar(desafio, chave, envio.captcha.strip())
     except CaptchaRecusado as erro:
-        raise HTTPException(422, "as letras do captcha não conferiram — a imagem já foi "
-                                 "trocada, é só ler a nova.") from erro
+        raise HTTPException(
+            422, "as letras do captcha não conferiram — a imagem já foi trocada, é só ler a nova."
+        ) from erro
     except ChaveNaoAchada as erro:
-        raise HTTPException(404, "o portal não achou nota com essa chave. Confira os dígitos; "
-                                 "nota recém-emitida às vezes demora a aparecer.") from erro
+        raise HTTPException(
+            404,
+            "o portal não achou nota com essa chave. Confira os dígitos; "
+            "nota recém-emitida às vezes demora a aparecer.",
+        ) from erro
     except Exception as erro:
         raise HTTPException(502, f"a SEFAZ não respondeu: {erro}") from erro
 
@@ -489,11 +515,17 @@ def enviar_chave(envio: EnvioChave, quem: Morador, con: Banco):
         # O HTML cru já está em disco: é dele que sai a fixture que ensina o
         # parser a ler esta tela. Até lá o cupom entra pela metade, não se perde.
         _guardar_html(chave, html)
-        log.warning("consulta completa em layout desconhecido; HTML guardado para a chave %s",
-                    chave)
+        log.warning(
+            "consulta completa em layout desconhecido; HTML guardado para a chave %s", chave
+        )
         cupom = _cupom_da_chave(
-            con, chave, avisos=["a consulta completa veio num layout que ainda não sei ler; "
-                                "o cupom entrou sem os itens"])
+            con,
+            chave,
+            avisos=[
+                "a consulta completa veio num layout que ainda não sei ler; "
+                "o cupom entrou sem os itens"
+            ],
+        )
         return responder(_gravar(con, chave, cupom, quem, "chave"))
 
     _guardar_html(chave, html)
@@ -513,10 +545,12 @@ def enviar_manual(envio: EnvioManual, quem: Morador, con: Banco):
         return responder(guardado)
 
     cupom = _cupom_da_chave(
-        con, chave,
+        con,
+        chave,
         total=_total_digitado(envio.total),
         emitido_em=_data_digitada(envio.emitido_em, chave),
-        avisos=["cupom digitado a partir da chave: sem os itens, só o total"])
+        avisos=["cupom digitado a partir da chave: sem os itens, só o total"],
+    )
     return responder(_gravar(con, chave, cupom, quem, "manual"))
 
 
@@ -524,8 +558,9 @@ def enviar_manual(envio: EnvioManual, quem: Morador, con: Banco):
 @app.get("/api/saude")
 async def saude(con: Banco):
     """Sem autenticação: é o que o Uptime Kuma bate. Não devolve dado da casa."""
-    return responder({"ok": True,
-                      "cupons": con.execute("SELECT COUNT(*) FROM cupom").fetchone()[0]})
+    return responder(
+        {"ok": True, "cupons": con.execute("SELECT COUNT(*) FROM cupom").fetchone()[0]}
+    )
 
 
 @app.get("/api/eu")
@@ -535,8 +570,9 @@ async def eu(quem: Morador):
 
 @app.get("/api/cupons")
 async def listar_cupons(_: Morador, con: Banco, limite: int = 20):
-    return responder({"cupons": cupons.recentes(con, limite),
-                      "revisao": cupons.fila_de_revisao(con)})
+    return responder(
+        {"cupons": cupons.recentes(con, limite), "revisao": cupons.fila_de_revisao(con)}
+    )
 
 
 @app.get("/api/cupom/{chave}")
@@ -585,8 +621,13 @@ async def revisar_cupom(chave: str, req: RequisicaoRevisao, _quem: Morador, con:
     pago_dec = Decimal(req.valor_pago) if req.valor_pago is not None else None
 
     ok = cupons.revisar(
-        con, chave, novos_itens,
-        total=total_dec, desconto=desc_dec, valor_pago=pago_dec, aprovar=req.aprovar,
+        con,
+        chave,
+        novos_itens,
+        total=total_dec,
+        desconto=desc_dec,
+        valor_pago=pago_dec,
+        aprovar=req.aprovar,
     )
     if not ok:
         raise HTTPException(500, "falha ao atualizar cupom")
@@ -631,12 +672,14 @@ async def listar_falhas(_: Morador, con: Banco):
                 except (ValueError, TypeError):
                     continue
 
-        fotos.append({
-            "arquivo": arq.name,
-            "data": data_foto.isoformat(sep=" ") if data_foto else "",
-            "tamanho_kb": stat.st_size // 1024,
-            "cupom": cupom_casado,
-        })
+        fotos.append(
+            {
+                "arquivo": arq.name,
+                "data": data_foto.isoformat(sep=" ") if data_foto else "",
+                "tamanho_kb": stat.st_size // 1024,
+                "cupom": cupom_casado,
+            }
+        )
     return responder({"falhas": fotos})
 
 
@@ -653,8 +696,12 @@ async def ver_foto_falha(nome: str, _: Morador):
 
 @app.get("/api/gastos")
 async def gastos(_: Morador, con: Banco, mes: str = ""):
-    return responder({"resumo": relatorios.resumo_do_mes(con, mes or None),
-                      "meses": relatorios.meses_com_gasto(con)})
+    return responder(
+        {
+            "resumo": relatorios.resumo_do_mes(con, mes or None),
+            "meses": relatorios.meses_com_gasto(con),
+        }
+    )
 
 
 @app.get("/api/produtos")
@@ -721,7 +768,7 @@ async def unir_como_linha(dados: UnirComoLinha, _: Morador, con: Banco):
 
 @app.post("/api/unificar/recusar")
 async def recusar_par(recusa: Recusa, _: Morador, con: Banco):
-    """"Não são a mesma coisa" — para o par não voltar a ser sugerido."""
+    """ "Não são a mesma coisa" — para o par não voltar a ser sugerido."""
     unificacao.recusar(con, recusa.desc_a, recusa.desc_b)
     return responder({"ok": True})
 
@@ -748,8 +795,9 @@ async def nova_lista(dados: NovaLista, quem: Morador, con: Banco):
 
 @app.get("/api/lista/{lista_id}")
 async def ver_lista(lista_id: int, _: Morador, con: Banco):
-    return responder({"itens": listas.itens(con, lista_id),
-                      "comparacao": listas.comparar(con, lista_id)})
+    return responder(
+        {"itens": listas.itens(con, lista_id), "comparacao": listas.comparar(con, lista_id)}
+    )
 
 
 @app.post("/api/lista/{lista_id}/item")
@@ -781,13 +829,16 @@ def pesquisar_precos(lista_id: int, request: Request):
 
     if not cliente.canario():
         raise HTTPException(
-            503, "a API do Menor Preço está devolvendo base de teste agora — "
-                 "nada foi gravado. Tente mais tarde.")
+            503,
+            "a API do Menor Preço está devolvendo base de teste agora — "
+            "nada foi gravado. Tente mais tarde.",
+        )
 
     for item in listas.itens(con, lista_id):
         try:
-            achados = cliente.buscar(gtin=item["gtin"] or "",
-                                     termo="" if item["gtin"] else item["descricao"])
+            achados = cliente.buscar(
+                gtin=item["gtin"] or "", termo="" if item["gtin"] else item["descricao"]
+            )
         except menor_preco.TetoAtingido as erro:
             relatorio["teto"] = str(erro)
             break
@@ -1037,12 +1088,14 @@ def salvar_variantes_produto(produto_id: int, dados: SalvarVariantes, request: R
         )
     vars = catalogo.listar_variantes(con, produto_id)
     prod_atualizado = con.execute("SELECT * FROM produto WHERE id = ?", (produto_id,)).fetchone()
-    return responder({
-        "ok": True,
-        "inseridos": inseridos,
-        "produto": dict(prod_atualizado),
-        "variantes": vars,
-    })
+    return responder(
+        {
+            "ok": True,
+            "inseridos": inseridos,
+            "produto": dict(prod_atualizado),
+            "variantes": vars,
+        }
+    )
 
 
 @app.post("/api/produto/{produto_id}/variante/{gtin}/padrao")
@@ -1073,9 +1126,7 @@ class AssociarItemVariante(BaseModel):
 
 
 @app.post("/api/item/{item_id}/variante")
-def associar_variante_item(
-    item_id: int, dados: AssociarItemVariante, request: Request, _: Morador
-):
+def associar_variante_item(item_id: int, dados: AssociarItemVariante, request: Request, _: Morador):
     """Associa um item de cupom a um GTIN/variante e sabor específico."""
     con = request.app.state.con
     item = con.execute(
@@ -1182,13 +1233,15 @@ def associar_variante_item(
             itens_retroagidos = cur.rowcount
 
     item_atualizado = con.execute("SELECT * FROM item WHERE id = ?", (item_id,)).fetchone()
-    return responder({
-        "ok": True,
-        "item": dict(item_atualizado),
-        "sabor": sabor,
-        "gtin": gtin_limpo,
-        "retroagidos": itens_retroagidos,
-    })
+    return responder(
+        {
+            "ok": True,
+            "item": dict(item_atualizado),
+            "sabor": sabor,
+            "gtin": gtin_limpo,
+            "retroagidos": itens_retroagidos,
+        }
+    )
 
 
 class DesmembrarVariante(BaseModel):
@@ -1320,15 +1373,19 @@ def desmembrar_produto_variante(
                       AND (cnpj = ? OR ? IS NULL)""",
                 (novo_id, produto_id, dados.codigo_loja, dados.cnpj, dados.cnpj),
             )
-            cnpjs_para_mapear = [dados.cnpj] if dados.cnpj else [
-                r["cnpj"]
-                for r in con.execute(
-                    """SELECT DISTINCT c.cnpj
+            cnpjs_para_mapear = (
+                [dados.cnpj]
+                if dados.cnpj
+                else [
+                    r["cnpj"]
+                    for r in con.execute(
+                        """SELECT DISTINCT c.cnpj
                          FROM item i JOIN cupom c ON c.chave = i.chave
                         WHERE i.produto_id = ? AND i.codigo_loja = ?""",
-                    (novo_id, dados.codigo_loja),
-                ).fetchall()
-            ]
+                        (novo_id, dados.codigo_loja),
+                    ).fetchall()
+                ]
+            )
             for c in cnpjs_para_mapear:
                 if c:
                     con.execute(
@@ -1407,12 +1464,14 @@ def desmembrar_produto_variante(
     enriquecimento.enriquecer_local(con, novo_id)
     novo_prod = con.execute("SELECT * FROM produto WHERE id = ?", (novo_id,)).fetchone()
 
-    return responder({
-        "ok": True,
-        "novo_produto_id": novo_id,
-        "novo_produto": dict(novo_prod),
-        "gtin": gtin_limpo,
-    })
+    return responder(
+        {
+            "ok": True,
+            "novo_produto_id": novo_id,
+            "novo_produto": dict(novo_prod),
+            "gtin": gtin_limpo,
+        }
+    )
 
 
 @app.get("/api/catalogo/ean/{gtin}")
@@ -1452,8 +1511,10 @@ def enriquecer_produtos(request: Request, quantos: int = 5):
     cliente = menor_preco.MenorPreco(con)
     if not cliente.canario():
         raise HTTPException(
-            503, "a API do Menor Preço está devolvendo base de teste agora — "
-                 "nada foi gravado. Tente mais tarde.")
+            503,
+            "a API do Menor Preço está devolvendo base de teste agora — "
+            "nada foi gravado. Tente mais tarde.",
+        )
 
     relatorio = {"identificados": [], "sem_certeza": []}
     for pendente in enriquecimento.pendentes(con, quantos):
@@ -1464,11 +1525,13 @@ def enriquecer_produtos(request: Request, quantos: int = 5):
             break
         except menor_preco.RespostaSuspeita as erro:
             relatorio["sem_certeza"].append(
-                {"descricao": pendente["descricao"], "motivo": f"resposta recusada: {erro}"})
+                {"descricao": pendente["descricao"], "motivo": f"resposta recusada: {erro}"}
+            )
             continue
         alvo = "identificados" if r["novo"] else "sem_certeza"
-        relatorio[alvo].append({"descricao": r["descricao"], "gtin": r.get("gtin"),
-                                "motivo": r["motivo"]})
+        relatorio[alvo].append(
+            {"descricao": r["descricao"], "gtin": r.get("gtin"), "motivo": r["motivo"]}
+        )
     relatorio["restantes"] = len(enriquecimento.pendentes(con, 999))
     return responder(relatorio)
 
@@ -1528,33 +1591,35 @@ async def listar_todas_receitas(_: Morador, con: Banco, q: str = "", categoria: 
     else:
         recs = receitas.listar_receitas(con)
     categorias = receitas.listar_categorias(con)
-    return responder({
-        "receitas": [
-            {
-                "id": r.id,
-                "nome": r.nome,
-                "porcoes": r.porcoes,
-                "tempo_preparo_min": r.tempo_preparo_min,
-                "categoria": r.categoria,
-                "foto_caminho": r.foto_caminho,
-                "criada_em": r.criada_em,
-                "qtd_ingredientes": len(r.ingredientes),
-                "ingredientes": [
-                    {
-                        "id": i.id,
-                        "nome_ingrediente": i.nome_ingrediente,
-                        "quantidade": i.quantidade,
-                        "quantidade_formatada": i.quantidade_formatada,
-                        "unidade": i.unidade,
-                        "gtin_associado": i.gtin_associado,
-                    }
-                    for i in r.ingredientes
-                ],
-            }
-            for r in recs
-        ],
-        "categorias": categorias,
-    })
+    return responder(
+        {
+            "receitas": [
+                {
+                    "id": r.id,
+                    "nome": r.nome,
+                    "porcoes": r.porcoes,
+                    "tempo_preparo_min": r.tempo_preparo_min,
+                    "categoria": r.categoria,
+                    "foto_caminho": r.foto_caminho,
+                    "criada_em": r.criada_em,
+                    "qtd_ingredientes": len(r.ingredientes),
+                    "ingredientes": [
+                        {
+                            "id": i.id,
+                            "nome_ingrediente": i.nome_ingrediente,
+                            "quantidade": i.quantidade,
+                            "quantidade_formatada": i.quantidade_formatada,
+                            "unidade": i.unidade,
+                            "gtin_associado": i.gtin_associado,
+                        }
+                        for i in r.ingredientes
+                    ],
+                }
+                for r in recs
+            ],
+            "categorias": categorias,
+        }
+    )
 
 
 @app.get("/api/receitas/{receita_id}")
@@ -1562,27 +1627,29 @@ async def detalhe_receita(receita_id: int, _: Morador, con: Banco):
     rec = receitas.obter_receita(con, receita_id)
     if rec is None:
         raise HTTPException(404, "Receita não encontrada")
-    return responder({
-        "id": rec.id,
-        "nome": rec.nome,
-        "porcoes": rec.porcoes,
-        "tempo_preparo_min": rec.tempo_preparo_min,
-        "instrucoes": rec.instrucoes,
-        "categoria": rec.categoria,
-        "foto_caminho": rec.foto_caminho,
-        "criada_em": rec.criada_em,
-        "ingredientes": [
-            {
-                "id": i.id,
-                "nome_ingrediente": i.nome_ingrediente,
-                "quantidade": i.quantidade,
-                "quantidade_formatada": i.quantidade_formatada,
-                "unidade": i.unidade,
-                "gtin_associado": i.gtin_associado,
-            }
-            for i in rec.ingredientes
-        ],
-    })
+    return responder(
+        {
+            "id": rec.id,
+            "nome": rec.nome,
+            "porcoes": rec.porcoes,
+            "tempo_preparo_min": rec.tempo_preparo_min,
+            "instrucoes": rec.instrucoes,
+            "categoria": rec.categoria,
+            "foto_caminho": rec.foto_caminho,
+            "criada_em": rec.criada_em,
+            "ingredientes": [
+                {
+                    "id": i.id,
+                    "nome_ingrediente": i.nome_ingrediente,
+                    "quantidade": i.quantidade,
+                    "quantidade_formatada": i.quantidade_formatada,
+                    "unidade": i.unidade,
+                    "gtin_associado": i.gtin_associado,
+                }
+                for i in rec.ingredientes
+            ],
+        }
+    )
 
 
 @app.post("/api/receitas")

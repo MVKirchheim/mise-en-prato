@@ -21,6 +21,7 @@ normalizar — nunca aproximada.
 Qualquer ambiguidade — dois GTIN diferentes para a mesma descrição — recusa e
 deixa para a pessoa decidir. Ver unificacao.py, que é o outro lado disto.
 """
+
 import logging
 import re
 import sqlite3
@@ -51,26 +52,40 @@ def buscar_metadados_ean(gtin: str, timeout: int = 5) -> dict | None:
 
 
 def _lojas_onde_a_casa_comprou(con: sqlite3.Connection, produto_id: int) -> set[str]:
-    return {r["razao"].upper() for r in con.execute("""
+    return {
+        r["razao"].upper()
+        for r in con.execute(
+            """
         SELECT DISTINCT e.razao
           FROM item i JOIN cupom c ON c.chave = i.chave
           JOIN estabelecimento e ON e.cnpj = c.cnpj
-         WHERE i.produto_id = ?""", (produto_id,)) if r["razao"]}
+         WHERE i.produto_id = ?""",
+            (produto_id,),
+        )
+        if r["razao"]
+    }
 
 
 def _preco_pago(con: sqlite3.Connection, produto_id: int) -> set[str]:
     """Preços unitários já pagos, em texto igual ao que a API devolve."""
-    return {f"{reais(r['unitario_centavos']):.2f}" for r in con.execute(
-        "SELECT DISTINCT unitario_centavos FROM item WHERE produto_id = ?", (produto_id,))}
+    return {
+        f"{reais(r['unitario_centavos']):.2f}"
+        for r in con.execute(
+            "SELECT DISTINCT unitario_centavos FROM item WHERE produto_id = ?", (produto_id,)
+        )
+    }
 
 
-def escolher_gtin(descricao: str, achados: list[dict], *,
-                  lojas_da_casa: set[str], precos_pagos: set[str]) -> dict:
+def escolher_gtin(
+    descricao: str, achados: list[dict], *, lojas_da_casa: set[str], precos_pagos: set[str]
+) -> dict:
     """Decide se dá para atribuir um GTIN. Devolve o motivo em qualquer caso."""
     alvo = normalizar(descricao)
-    iguais = [p for p in achados
-              if normalizar(p.get("desc", "")) == alvo
-              and digito_gtin_confere(p.get("gtin") or "")]
+    iguais = [
+        p
+        for p in achados
+        if normalizar(p.get("desc", "")) == alvo and digito_gtin_confere(p.get("gtin") or "")
+    ]
     if not iguais:
         return {"gtin": None, "motivo": "nenhum resultado com a descrição exata"}
 
@@ -78,28 +93,41 @@ def escolher_gtin(descricao: str, achados: list[dict], *,
         return re.sub(r"\D", "", p["gtin"]).lstrip("0")
 
     # degrau 1: mesma loja onde a casa comprou
-    da_casa = [p for p in iguais
-               if (p.get("estabelecimento") or {}).get("nm_emp", "").upper() in lojas_da_casa]
+    da_casa = [
+        p
+        for p in iguais
+        if (p.get("estabelecimento") or {}).get("nm_emp", "").upper() in lojas_da_casa
+    ]
     if da_casa:
         codigos = {codigo(p) for p in da_casa}
         if len(codigos) == 1:
             gtin = codigos.pop()
             mesmo_preco = any(p.get("valor") in precos_pagos for p in da_casa)
-            return {"gtin": gtin, "ncm": da_casa[0].get("ncm"),
-                    "motivo": "mesma descrição na mesma loja onde a casa comprou"
-                              + (", e pelo mesmo preço" if mesmo_preco else ""),
-                    "confianca": "alta"}
-        return {"gtin": None,
-                "motivo": f"a mesma loja lista {len(codigos)} códigos para essa descrição"}
+            return {
+                "gtin": gtin,
+                "ncm": da_casa[0].get("ncm"),
+                "motivo": "mesma descrição na mesma loja onde a casa comprou"
+                + (", e pelo mesmo preço" if mesmo_preco else ""),
+                "confianca": "alta",
+            }
+        return {
+            "gtin": None,
+            "motivo": f"a mesma loja lista {len(codigos)} códigos para essa descrição",
+        }
 
     # degrau 2: consenso — a região inteira concorda num código só
     codigos = {codigo(p) for p in iguais}
     if len(codigos) == 1:
-        return {"gtin": codigos.pop(), "ncm": iguais[0].get("ncm"),
-                "motivo": f"{len(iguais)} resultados na região, todos com o mesmo código",
-                "confianca": "media"}
-    return {"gtin": None,
-            "motivo": f"{len(codigos)} códigos diferentes para a mesma descrição — ambíguo"}
+        return {
+            "gtin": codigos.pop(),
+            "ncm": iguais[0].get("ncm"),
+            "motivo": f"{len(iguais)} resultados na região, todos com o mesmo código",
+            "confianca": "media",
+        }
+    return {
+        "gtin": None,
+        "motivo": f"{len(codigos)} códigos diferentes para a mesma descrição — ambíguo",
+    }
 
 
 def aplicar(
@@ -284,8 +312,7 @@ def enriquecer(
     # consenso de voltar ao topo da fila toda rodada e queimar o teto de consultas.
     with con:
         con.execute(
-            "UPDATE produto SET gtin_buscado_em = datetime('now','localtime')"
-            " WHERE id = ?",
+            "UPDATE produto SET gtin_buscado_em = datetime('now','localtime') WHERE id = ?",
             (produto_id,),
         )
     if decisao["gtin"]:
@@ -361,4 +388,3 @@ def pendentes(con: sqlite3.Connection, limite: int = 50) -> list[dict]:
             (limite,),
         )
     ]
-

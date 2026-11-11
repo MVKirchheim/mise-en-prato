@@ -4,6 +4,7 @@ O risco aqui é assimétrico. Deixar de sugerir um par custa um clique manual;
 juntar dois produtos diferentes suja o histórico e é trabalhoso de desfazer.
 Por isso metade destes testes é sobre recusar.
 """
+
 from decimal import Decimal
 from pathlib import Path
 
@@ -32,36 +33,52 @@ def con(tmp_path):
 
 
 # ── o que parece o mesmo produto ─────────────────────────────────────────────
-@pytest.mark.parametrize("a,b", [
-    # o caso real: o Muffato imprimiu os dois na MESMA nota
-    ("ENERG MONST 473ML", "ENERG MONSTER 473ML"),
-    ("LEITE FRIMESA INT 1LT", "LEITE FRIMESA INTEGRAL 1LT"),
-    ("BISC PRINCESA 400G", "BISCOITO PRINCESA 400G"),
-])
+@pytest.mark.parametrize(
+    "a,b",
+    [
+        # o caso real: o Muffato imprimiu os dois na MESMA nota
+        ("ENERG MONST 473ML", "ENERG MONSTER 473ML"),
+        ("LEITE FRIMESA INT 1LT", "LEITE FRIMESA INTEGRAL 1LT"),
+        ("BISC PRINCESA 400G", "BISCOITO PRINCESA 400G"),
+    ],
+)
 def test_abreviacao_e_candidata(a, b):
     assert parecidos(a, b) is not None
 
 
-@pytest.mark.parametrize("a,b,porque", [
-    ("ATUM GOM COSTA RALADO NAT 170G", "ATUM GOM COSTA PEDACOS NAT 170G",
-     "ralado e pedaços são produtos diferentes, não abreviação"),
-    ("IOG FRIMESA PROT BAUNILHA 170G", "IOG FRIMESA PROT MGO 170G",
-     "sabores diferentes"),
-    ("CHOC TRENTO SPEC AVELA LTE 26G", "CHOC TRENTO SPEC AVELA BCO 26G",
-     "leite e branco: mesmo formato, produtos diferentes"),
-    ("LEITE FRIMESA INT 1LT", "LEITE FRIMESA INT 2LT",
-     "tamanhos diferentes nunca são o mesmo produto"),
-    ("LEITE FRIMESA INT 1LT", "LEITE FRIMESA INTEGRAL LONGA VIDA 1LT",
-     "número de fichas diferente: fora do alcance da regra estreita"),
-    ("REF COCA COLA 2L", "REF PEPSI COLA 2L",
-     "marcas diferentes"),
-])
+@pytest.mark.parametrize(
+    "a,b,porque",
+    [
+        (
+            "ATUM GOM COSTA RALADO NAT 170G",
+            "ATUM GOM COSTA PEDACOS NAT 170G",
+            "ralado e pedaços são produtos diferentes, não abreviação",
+        ),
+        ("IOG FRIMESA PROT BAUNILHA 170G", "IOG FRIMESA PROT MGO 170G", "sabores diferentes"),
+        (
+            "CHOC TRENTO SPEC AVELA LTE 26G",
+            "CHOC TRENTO SPEC AVELA BCO 26G",
+            "leite e branco: mesmo formato, produtos diferentes",
+        ),
+        (
+            "LEITE FRIMESA INT 1LT",
+            "LEITE FRIMESA INT 2LT",
+            "tamanhos diferentes nunca são o mesmo produto",
+        ),
+        (
+            "LEITE FRIMESA INT 1LT",
+            "LEITE FRIMESA INTEGRAL LONGA VIDA 1LT",
+            "número de fichas diferente: fora do alcance da regra estreita",
+        ),
+        ("REF COCA COLA 2L", "REF PEPSI COLA 2L", "marcas diferentes"),
+    ],
+)
 def test_o_que_a_regra_precisa_recusar(a, b, porque):
     assert parecidos(a, b) is None, porque
 
 
 def test_duas_letras_nao_bastam_para_abreviacao():
-    """"CO" prefixando "COCA" é fraco demais para virar sugestão."""
+    """ "CO" prefixando "COCA" é fraco demais para virar sugestão."""
     assert parecidos("REF CO 2L", "REF COCA 2L") is None
 
 
@@ -79,8 +96,7 @@ def test_candidato_aparece_e_o_maior_historico_fica(con):
 def test_codigo_de_barras_igual_vem_primeiro(con):
     gtin = "7891167011779"
     con.execute("UPDATE produto SET gtin = ? WHERE descricao_canonica LIKE 'ATUM%'", (gtin,))
-    con.execute("INSERT INTO produto (descricao_canonica, gtin) VALUES ('OUTRA COISA', ?)",
-                (gtin,))
+    con.execute("INSERT INTO produto (descricao_canonica, gtin) VALUES ('OUTRA COISA', ?)", (gtin,))
     con.commit()
     primeiro = candidatos(con)[0]
     assert primeiro["motivo"] == "mesmo código de barras"
@@ -96,15 +112,19 @@ def test_par_recusado_nao_volta(con):
 
 # ── a fusão ──────────────────────────────────────────────────────────────────
 def test_unificar_move_historico_e_apaga_o_absorvido(con):
-    manter = con.execute(
-        "SELECT id FROM produto WHERE descricao_canonica LIKE 'ATUM%'").fetchone()[0]
+    manter = con.execute("SELECT id FROM produto WHERE descricao_canonica LIKE 'ATUM%'").fetchone()[
+        0
+    ]
     juntar = con.execute(
         "INSERT INTO produto (descricao_canonica, gtin, ncm)"
-        " VALUES ('ATUM ABREV', '789', '16042010')").lastrowid
-    con.execute("INSERT INTO item (chave, seq, descricao, quantidade_milesimos,"
-                " unitario_centavos, total_centavos, produto_id)"
-                " SELECT chave, 99, 'ATUM ABREV', 1000, 1097, 1097, ? FROM cupom LIMIT 1",
-                (juntar,))
+        " VALUES ('ATUM ABREV', '789', '16042010')"
+    ).lastrowid
+    con.execute(
+        "INSERT INTO item (chave, seq, descricao, quantidade_milesimos,"
+        " unitario_centavos, total_centavos, produto_id)"
+        " SELECT chave, 99, 'ATUM ABREV', 1000, 1097, 1097, ? FROM cupom LIMIT 1",
+        (juntar,),
+    )
     con.commit()
 
     unificar(con, manter, juntar)
@@ -120,10 +140,15 @@ def test_unificar_move_historico_e_apaga_o_absorvido(con):
 def test_unificar_nao_perde_dinheiro(con):
     """O gasto total do mês não pode mudar por causa de uma unificação."""
     from mise_en_prato.relatorios import resumo_do_mes
+
     antes = resumo_do_mes(con, "2026-08")["total"]
 
-    ids = [r[0] for r in con.execute(
-        "SELECT id FROM produto WHERE descricao_canonica LIKE 'IOG%' ORDER BY id")]
+    ids = [
+        r[0]
+        for r in con.execute(
+            "SELECT id FROM produto WHERE descricao_canonica LIKE 'IOG%' ORDER BY id"
+        )
+    ]
     unificar(con, ids[0], ids[1])
 
     assert resumo_do_mes(con, "2026-08")["total"] == antes == Decimal("106.74")
@@ -173,8 +198,8 @@ def test_unificar_como_linha_converte_produto_em_variante_e_migra_itens(con):
                           unitario_centavos, total_centavos, produto_id, codigo_loja)
         SELECT chave, ?, ?, 1000, 450, 450, ?, ? FROM cupom LIMIT 1
     """
-    con.execute(sql_item, (101, 'IOG GREGO TRAD', mestre, 'COD_TRAD'))
-    con.execute(sql_item, (102, 'IOG GREGO MORANGO', outro, 'COD_MORANGO'))
+    con.execute(sql_item, (101, "IOG GREGO TRAD", mestre, "COD_TRAD"))
+    con.execute(sql_item, (102, "IOG GREGO MORANGO", outro, "COD_MORANGO"))
     con.commit()
 
     res = unificar_como_linha(

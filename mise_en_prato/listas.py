@@ -13,6 +13,7 @@ que a região praticou (menor_preco, consultado sob demanda). Preço da própria
 casa é fato consumado; da região é informação de terceiro, já validada pelo
 sanidade.py antes de chegar aqui.
 """
+
 import sqlite3
 from datetime import datetime, timedelta
 from decimal import Decimal
@@ -34,21 +35,28 @@ def criar(con: sqlite3.Connection, nome: str, morador: str) -> int:
     with con:
         return con.execute(
             "INSERT INTO lista (nome, morador, criada_em) VALUES (?,?,?)",
-            (nome, morador, datetime.now().isoformat(sep=" ", timespec="seconds"))).lastrowid
+            (nome, morador, datetime.now().isoformat(sep=" ", timespec="seconds")),
+        ).lastrowid
 
 
 def listar(con: sqlite3.Connection) -> list[dict]:
     return [
-        {"id": r["id"], "nome": r["nome"], "morador": r["morador"],
-         "criada_em": r["criada_em"], "itens": r["itens"]}
+        {
+            "id": r["id"],
+            "nome": r["nome"],
+            "morador": r["morador"],
+            "criada_em": r["criada_em"],
+            "itens": r["itens"],
+        }
         for r in con.execute("""
             SELECT l.*, (SELECT COUNT(*) FROM lista_item li WHERE li.lista_id = l.id) AS itens
               FROM lista l ORDER BY l.criada_em DESC""")
     ]
 
 
-def por_produto(con: sqlite3.Connection, lista_id: int, produto_id: int,
-                quantidade: Decimal | None = None) -> None:
+def por_produto(
+    con: sqlite3.Connection, lista_id: int, produto_id: int, quantidade: Decimal | None = None
+) -> None:
     """Põe (ou atualiza) um item na lista."""
     with con:
         con.execute(
@@ -56,23 +64,31 @@ def por_produto(con: sqlite3.Connection, lista_id: int, produto_id: int,
                VALUES (?,?,?)
                ON CONFLICT(lista_id, produto_id)
                DO UPDATE SET quantidade_milesimos = excluded.quantidade_milesimos""",
-            (lista_id, produto_id, milesimos(quantidade or Decimal("1"))))
+            (lista_id, produto_id, milesimos(quantidade or Decimal("1"))),
+        )
 
 
 def tirar(con: sqlite3.Connection, lista_id: int, produto_id: int) -> None:
     with con:
-        con.execute("DELETE FROM lista_item WHERE lista_id = ? AND produto_id = ?",
-                    (lista_id, produto_id))
+        con.execute(
+            "DELETE FROM lista_item WHERE lista_id = ? AND produto_id = ?", (lista_id, produto_id)
+        )
 
 
 def itens(con: sqlite3.Connection, lista_id: int) -> list[dict]:
     return [
-        {"produto_id": r["produto_id"],
-         "descricao": r["apelido"] or r["descricao_canonica"],
-         "gtin": r["gtin"], "quantidade": unidades(r["quantidade_milesimos"]),
-         "is_granel": bool(r["is_granel"]),
-         "ultimo_preco": reais(r["ultimo_centavos"]) if r["ultimo_centavos"] is not None else None}
-        for r in con.execute("""
+        {
+            "produto_id": r["produto_id"],
+            "descricao": r["apelido"] or r["descricao_canonica"],
+            "gtin": r["gtin"],
+            "quantidade": unidades(r["quantidade_milesimos"]),
+            "is_granel": bool(r["is_granel"]),
+            "ultimo_preco": reais(r["ultimo_centavos"])
+            if r["ultimo_centavos"] is not None
+            else None,
+        }
+        for r in con.execute(
+            """
             SELECT li.produto_id, li.quantidade_milesimos, p.descricao_canonica,
                    p.apelido, p.gtin, p.is_granel,
                    COALESCE(
@@ -83,7 +99,9 @@ def itens(con: sqlite3.Connection, lista_id: int) -> list[dict]:
                          WHERE pr.produto_id = p.id ORDER BY pr.observado_em DESC LIMIT 1)
                    ) AS ultimo_centavos
               FROM lista_item li JOIN produto p ON p.id = li.produto_id
-             WHERE li.lista_id = ? ORDER BY p.descricao_canonica""", (lista_id,))
+             WHERE li.lista_id = ? ORDER BY p.descricao_canonica""",
+            (lista_id,),
+        )
     ]
 
 
@@ -94,19 +112,25 @@ def sugerir(con: sqlite3.Connection, limite: int = 20) -> list[dict]:
     interessa mais numa lista do que um churrasco caro comprado uma vez.
     """
     return [
-        {"produto_id": r["id"], "descricao": r["apelido"] or r["descricao_canonica"],
-         "compras": r["compras"], "ultimo": reais(r["ultimo"]),
-         "is_granel": bool(r["is_granel"])}
-        for r in con.execute("""
+        {
+            "produto_id": r["id"],
+            "descricao": r["apelido"] or r["descricao_canonica"],
+            "compras": r["compras"],
+            "ultimo": reais(r["ultimo"]),
+            "is_granel": bool(r["is_granel"]),
+        }
+        for r in con.execute(
+            """
             SELECT p.id, p.descricao_canonica, p.apelido, p.is_granel,
                    COUNT(DISTINCT i.chave) AS compras,
                    (SELECT i2.unitario_centavos FROM item i2
                       JOIN cupom c2 ON c2.chave = i2.chave
                      WHERE i2.produto_id = p.id ORDER BY c2.emitido_em DESC LIMIT 1) AS ultimo
               FROM produto p JOIN item i ON i.produto_id = p.id
-             GROUP BY p.id ORDER BY compras DESC, p.descricao_canonica LIMIT ?""", (limite,))
+             GROUP BY p.id ORDER BY compras DESC, p.descricao_canonica LIMIT ?""",
+            (limite,),
+        )
     ]
-
 
 
 # ── a comparação ─────────────────────────────────────────────────────────────
@@ -116,7 +140,10 @@ def _precos_recentes(con: sqlite3.Connection, produto_ids: list[int], dias: int)
         return []
     limite = (datetime.now() - timedelta(days=dias)).isoformat(sep=" ", timespec="seconds")
     marcadores = ",".join("?" * len(produto_ids))
-    return [dict(r) for r in con.execute(f"""
+    return [
+        dict(r)
+        for r in con.execute(
+            f"""
         SELECT produto_id, loja_id, loja, unitario_centavos, observado_em, fonte, distancia_km
           FROM (
             SELECT pr.produto_id, pr.distancia_km,
@@ -131,7 +158,9 @@ def _precos_recentes(con: sqlite3.Connection, produto_ids: list[int], dias: int)
              WHERE pr.produto_id IN ({marcadores})
                AND COALESCE(pr.observado_em, '') >= ?)
          WHERE ordem = 1""",  # noqa: S608 — marcadores são "?", não dado
-        [SEM_NOME, *produto_ids, limite])]
+            [SEM_NOME, *produto_ids, limite],
+        )
+    ]
 
 
 def comparar(con: sqlite3.Connection, lista_id: int, dias: int = JANELA_PADRAO) -> dict:
@@ -146,48 +175,67 @@ def comparar(con: sqlite3.Connection, lista_id: int, dias: int = JANELA_PADRAO) 
 
     lojas: dict[str, dict] = {}
     for p in precos:
-        loja = lojas.setdefault(p["loja_id"], {
-            "loja": p["loja"], "total": Decimal("0"), "itens": [], "fontes": set(),
-            "distancias": []})
+        loja = lojas.setdefault(
+            p["loja_id"],
+            {
+                "loja": p["loja"],
+                "total": Decimal("0"),
+                "itens": [],
+                "fontes": set(),
+                "distancias": [],
+            },
+        )
         if p["distancia_km"] is not None:
             loja["distancias"].append(p["distancia_km"])
         valor = reais(p["unitario_centavos"]) * quantidade[p["produto_id"]]
         loja["total"] += valor
         loja["fontes"].add(p["fonte"])
-        loja["itens"].append({
-            "produto_id": p["produto_id"], "descricao": nome[p["produto_id"]],
-            "unitario": reais(p["unitario_centavos"]), "subtotal": valor,
-            "fonte": p["fonte"], "observado_em": p["observado_em"]})
+        loja["itens"].append(
+            {
+                "produto_id": p["produto_id"],
+                "descricao": nome[p["produto_id"]],
+                "unitario": reais(p["unitario_centavos"]),
+                "subtotal": valor,
+                "fonte": p["fonte"],
+                "observado_em": p["observado_em"],
+            }
+        )
 
     resultado = []
     for dados in lojas.values():
         tem = {i["produto_id"] for i in dados["itens"]}
-        resultado.append({
-            "loja": dados["loja"],
-            # Rede grande tem várias filiais, e a API dá um código por filial.
-            # Sem a distância, três linhas "COOPERATIVA AGROINDUSTRIAL LAR" com
-            # totais diferentes são indistinguíveis na tela.
-            "distancia_km": (round(min(dados["distancias"]), 1)
-                             if dados["distancias"] else None),
-            "total": dados["total"].quantize(Decimal("0.01")),
-            # cobertura vai SEMPRE junto do total: sem ela, a loja que só tem
-            # metade da lista parece a mais barata e ganha por omissão.
-            "cobertura": len(tem), "de": len(quantidade),
-            "completa": len(tem) == len(quantidade),
-            "falta": sorted(nome[i] for i in set(quantidade) - tem),
-            "fontes": sorted(dados["fontes"]),
-            # a observação mais antiga do lote: é o que permite desconfiar de um
-            # total barato demais sem precisar abrir loja por loja
-            "mais_antigo": min((i["observado_em"] or "") for i in dados["itens"])[:10],
-            "itens": sorted(dados["itens"], key=lambda i: i["descricao"]),
-        })
+        resultado.append(
+            {
+                "loja": dados["loja"],
+                # Rede grande tem várias filiais, e a API dá um código por filial.
+                # Sem a distância, três linhas "COOPERATIVA AGROINDUSTRIAL LAR" com
+                # totais diferentes são indistinguíveis na tela.
+                "distancia_km": (
+                    round(min(dados["distancias"]), 1) if dados["distancias"] else None
+                ),
+                "total": dados["total"].quantize(Decimal("0.01")),
+                # cobertura vai SEMPRE junto do total: sem ela, a loja que só tem
+                # metade da lista parece a mais barata e ganha por omissão.
+                "cobertura": len(tem),
+                "de": len(quantidade),
+                "completa": len(tem) == len(quantidade),
+                "falta": sorted(nome[i] for i in set(quantidade) - tem),
+                "fontes": sorted(dados["fontes"]),
+                # a observação mais antiga do lote: é o que permite desconfiar de um
+                # total barato demais sem precisar abrir loja por loja
+                "mais_antigo": min((i["observado_em"] or "") for i in dados["itens"])[:10],
+                "itens": sorted(dados["itens"], key=lambda i: i["descricao"]),
+            }
+        )
 
     # completas primeiro, e entre elas a mais barata. Comparar total de listas
     # de tamanhos diferentes seria comparar coisas diferentes.
     resultado.sort(key=lambda r: (not r["completa"], r["total"]))
     com_preco = {p["produto_id"] for p in precos}
     return {
-        "lista_id": lista_id, "itens": len(quantidade), "lojas": resultado,
+        "lista_id": lista_id,
+        "itens": len(quantidade),
+        "lojas": resultado,
         "sem_preco": sorted(nome[i] for i in set(quantidade) - com_preco),
         "janela_dias": dias,
     }

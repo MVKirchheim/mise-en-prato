@@ -1,4 +1,5 @@
 """Testes do inventário doméstico de itens, sabores, memória de loja e desmembramento."""
+
 from decimal import Decimal
 from unittest.mock import patch
 
@@ -209,6 +210,7 @@ def test_api_associar_variante_item(tmp_path, monkeypatch):
     monkeypatch.setenv("DADOS", str(tmp_path))
     monkeypatch.setenv("EXIGIR_TAILNET", "false")
     from mise_en_prato.config import config
+
     config.cache_clear()
 
     db_path = tmp_path / "teste_api_item.db"
@@ -216,9 +218,7 @@ def test_api_associar_variante_item(tmp_path, monkeypatch):
 
     cnpj = "12345678000199"
     con.execute("INSERT INTO estabelecimento (cnpj, razao) VALUES (?, 'Mercado X')", (cnpj,))
-    con.execute(
-        "INSERT INTO produto (id, descricao_canonica) VALUES (10, 'BEB LA 3 CORAC 260ML')"
-    )
+    con.execute("INSERT INTO produto (id, descricao_canonica) VALUES (10, 'BEB LA 3 CORAC 260ML')")
 
     con.execute(
         """INSERT INTO cupom (chave, cnpj, emitido_em, completo, criado_em)
@@ -280,12 +280,12 @@ def test_api_associar_variante_item(tmp_path, monkeypatch):
     assert mem["sabor"] == "Chocolatto"
 
 
-
 def test_api_desmembrar_produto(tmp_path, monkeypatch):
     """Testa endpoint POST /api/produto/{id}/desmembrar separando variante em produto autônomo."""
     monkeypatch.setenv("DADOS", str(tmp_path))
     monkeypatch.setenv("EXIGIR_TAILNET", "false")
     from mise_en_prato.config import config
+
     config.cache_clear()
 
     db_path = tmp_path / "teste_api_desmembrar.db"
@@ -404,6 +404,7 @@ def test_api_associar_sabor_sem_gtin(tmp_path, monkeypatch):
     monkeypatch.setenv("DADOS", str(tmp_path))
     monkeypatch.setenv("EXIGIR_TAILNET", "false")
     from mise_en_prato.config import config
+
     config.cache_clear()
 
     db_path = tmp_path / "teste_sabor_sem_gtin.db"
@@ -411,9 +412,7 @@ def test_api_associar_sabor_sem_gtin(tmp_path, monkeypatch):
 
     cnpj = "12345678000199"
     con.execute("INSERT INTO estabelecimento (cnpj, razao) VALUES (?, 'Mercado Y')", (cnpj,))
-    con.execute(
-        "INSERT INTO produto (id, descricao_canonica) VALUES (20, 'IOGURTE LIQUIDO 170G')"
-    )
+    con.execute("INSERT INTO produto (id, descricao_canonica) VALUES (20, 'IOGURTE LIQUIDO 170G')")
     con.execute(
         """INSERT INTO cupom (chave, cnpj, emitido_em, completo, criado_em)
            VALUES ('c_sabor', ?, '2026-09-01', 1, '2026-09-01')""",
@@ -446,9 +445,7 @@ def test_api_associar_sabor_sem_gtin(tmp_path, monkeypatch):
     assert it["gtin_variante"] is None
 
     # Garante que não criou variante '0000000000000'
-    fake_var = con.execute(
-        "SELECT * FROM produto_variante WHERE gtin = '0000000000000'"
-    ).fetchone()
+    fake_var = con.execute("SELECT * FROM produto_variante WHERE gtin = '0000000000000'").fetchone()
     assert fake_var is None
 
     clp = con.execute(
@@ -466,6 +463,7 @@ def test_api_catalogo_ean_endpoint(tmp_path, monkeypatch):
     monkeypatch.setenv("DADOS", str(tmp_path))
     monkeypatch.setenv("EXIGIR_TAILNET", "false")
     from mise_en_prato.config import config
+
     config.cache_clear()
 
     db_path = tmp_path / "teste_api_catalogo.db"
@@ -522,6 +520,7 @@ def test_desmembrar_limpa_precos_pai_e_preenche_itens(tmp_path, monkeypatch):
     monkeypatch.setenv("DADOS", str(tmp_path))
     monkeypatch.setenv("EXIGIR_TAILNET", "false")
     from mise_en_prato.config import config
+
     config.cache_clear()
 
     db_path = tmp_path / "teste_desmembrar_precos.db"
@@ -645,9 +644,7 @@ def test_amarrar_gtin_produto_fluxo_completo(con):
         "INSERT INTO produto (descricao_canonica) VALUES ('BARRA CEREAL NUTRY')"
     ).lastrowid
     cnpj = "00000000000191"
-    con.execute(
-        "INSERT INTO estabelecimento (cnpj, razao) VALUES (?, 'Mercado Muffato')", (cnpj,)
-    )
+    con.execute("INSERT INTO estabelecimento (cnpj, razao) VALUES (?, 'Mercado Muffato')", (cnpj,))
     con.execute(
         """INSERT INTO cupom (chave, cnpj, emitido_em, completo, criado_em)
            VALUES ('c_nutry', ?, '2026-10-23', 1, '2026-10-23')""",
@@ -680,9 +677,7 @@ def test_amarrar_gtin_produto_fluxo_completo(con):
     assert prod["marca"] == "Nutry"
 
     # 2. Variante inserida
-    var = con.execute(
-        "SELECT * FROM produto_variante WHERE produto_id = ?", (p_id,)
-    ).fetchone()
+    var = con.execute("SELECT * FROM produto_variante WHERE produto_id = ?", (p_id,)).fetchone()
     assert var["gtin"] == "7896045102556"
     assert var["sabor"] == "Castanha do Pará"
     assert var["eh_padrao"] == 1
@@ -715,4 +710,3 @@ def test_amarrar_gtin_produto_validacoes(con):
     # Produto inexistente com GTIN válido
     with pytest.raises(ValueError, match="produto não encontrado"):
         amarrar_gtin_produto(con, 99999, gtin="7896045102556")
-

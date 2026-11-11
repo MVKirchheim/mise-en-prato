@@ -4,6 +4,7 @@ Nenhum teste aqui toca a rede — a camada HTTP é injetada. O que se exercita �
 o que protege: teto por hora, espaçamento, recusa de resposta degradada e
 gravação com a loja identificada.
 """
+
 import json
 from pathlib import Path
 
@@ -30,10 +31,14 @@ def con(tmp_path, monkeypatch):
     monkeypatch.setenv("DADOS", str(tmp_path))
     monkeypatch.setenv("TETO_CONSULTAS_HORA", "3")
     from mise_en_prato.config import config
+
     config.cache_clear()
     con = conectar(tmp_path / "teste.db")
-    gravar(con, interpretar((FIXTURES / "cupom_lar_2026-08-14.html").read_text(encoding="utf-8")),
-           morador="Miguel")
+    gravar(
+        con,
+        interpretar((FIXTURES / "cupom_lar_2026-08-14.html").read_text(encoding="utf-8")),
+        morador="Miguel",
+    )
     yield con
     con.close()
     config.cache_clear()
@@ -79,11 +84,11 @@ def test_toda_consulta_entra_no_diario(con):
 def test_teto_por_hora_barra(con):
     """O teto é a regra que impede a app de virar o robô que o termo proíbe."""
     c = cliente(con, SADIO)
-    for _ in range(3):                    # TETO_CONSULTAS_HORA=3 no fixture
+    for _ in range(3):  # TETO_CONSULTAS_HORA=3 no fixture
         c.buscar(termo="leite")
     with pytest.raises(TetoAtingido, match="robô"):
         c.buscar(termo="leite")
-    assert len(c.chamadas) == 3           # a quarta nem chegou a sair
+    assert len(c.chamadas) == 3  # a quarta nem chegou a sair
 
 
 def test_teto_conta_ate_as_recusadas(con):
@@ -106,22 +111,42 @@ def test_canario_reprova_mesmo_resposta_estruturalmente_ok(con):
     Esta resposta passaria em todas as regras estruturais — ncm de 8 dígitos,
     uf PR, gtin válido — e ainda assim é mentira, porque o termo não existe.
     """
-    plausivel = {"produtos": [
-        {"desc": CANARIO, "ncm": "16042010", "gtin": "7891167011779",
-         "estabelecimento": {"uf": "PR", "nm_emp": f"MERCADO {k}", "mun": "MEDIANEIRA"}}
-        for k in range(5)], "total": 5}
+    plausivel = {
+        "produtos": [
+            {
+                "desc": CANARIO,
+                "ncm": "16042010",
+                "gtin": "7891167011779",
+                "estabelecimento": {"uf": "PR", "nm_emp": f"MERCADO {k}", "mun": "MEDIANEIRA"},
+            }
+            for k in range(5)
+        ],
+        "total": 5,
+    }
     c = cliente(con, plausivel)
     assert c.canario() is False
 
 
 def test_busca_pelo_nome_exato_nao_e_recusada(con):
     """Regressão do falso positivo: nome exato do produto não é eco."""
-    resposta = {"produtos": [
-        {"desc": "ATUM GOM COSTA RALADO NAT 170G", "ncm": "16042010",
-         "gtin": "7891167011779", "valor": "10.97", "distkm": "1.0",
-         "datahora": "2026-08-19T10:00:00.000Z",
-         "estabelecimento": {"uf": "PR", "nm_emp": "LAR", "mun": "MEDIANEIRA",
-                             "codigo": "abc"}}]}
+    resposta = {
+        "produtos": [
+            {
+                "desc": "ATUM GOM COSTA RALADO NAT 170G",
+                "ncm": "16042010",
+                "gtin": "7891167011779",
+                "valor": "10.97",
+                "distkm": "1.0",
+                "datahora": "2026-08-19T10:00:00.000Z",
+                "estabelecimento": {
+                    "uf": "PR",
+                    "nm_emp": "LAR",
+                    "mun": "MEDIANEIRA",
+                    "codigo": "abc",
+                },
+            }
+        ]
+    }
     achados = cliente(con, resposta).buscar(termo="ATUM GOM COSTA RALADO NAT 170G")
     assert len(achados) == 1
 
@@ -165,7 +190,8 @@ def test_loja_conhecida_do_cupom_ganha_o_cnpj(con):
     assert lar > 0
 
     codigo = con.execute(
-        "SELECT codigo_menor_preco FROM estabelecimento WHERE cnpj='77752293016191'").fetchone()[0]
+        "SELECT codigo_menor_preco FROM estabelecimento WHERE cnpj='77752293016191'"
+    ).fetchone()[0]
     assert codigo, "o pareamento com o código opaco da API tem de ficar guardado"
 
 
