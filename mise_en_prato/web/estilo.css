@@ -437,6 +437,32 @@ svg.grafico { width: 100%; height: 150px; display: block; overflow: visible; }
 svg.grafico rect { fill: var(--verde); }
 svg.grafico rect.apagada { fill: var(--borda); }
 svg.grafico text { fill: var(--fraca); font-size: 10px; }
+/* Alvo de toque e de teclado de cada coluna, transparente e da altura toda. */
+svg.grafico rect.alvo { fill: transparent; pointer-events: all; cursor: pointer; outline: none; }
+svg.grafico rect.alvo:focus-visible {
+  stroke: var(--terracota); stroke-width: 2px; vector-effect: non-scaling-stroke;
+}
+.grafico-rotulos { display: grid; margin-top: .25rem; font-size: .68rem; line-height: 1.15;
+                   color: var(--fraca); text-align: center; }
+.grafico-rotulos span { min-width: 0; overflow: hidden; }
+.grafico-rotulos small { display: block; min-height: .7rem; font-size: .6rem; }
+.grafico-rotulos .em-foco { color: var(--tinta); font-weight: 700; }
+
+/* ── gastos: cupons do mês e detalhe ──────────────────────────────────────── */
+.gastos-cupom-cabeca {
+  width: 100%; padding: 0; border: 0; background: none; color: inherit;
+  font: inherit; text-align: left; cursor: pointer; align-items: flex-start;
+}
+.gastos-cupom-cabeca:focus-visible { outline: 2px solid var(--terracota); outline-offset: 4px;
+                                     border-radius: 6px; }
+.gastos-cupom-loja { min-width: 0; overflow-wrap: anywhere; }
+.gastos-cupom-loja .fraca { display: block; }
+.gastos-cupom-loja .selo { display: inline-block; margin-top: .3rem; }
+.gastos-cupom-valor { display: flex; flex-direction: column; align-items: flex-end; }
+.gastos-cupom-itens { margin-top: .6rem; padding-top: .5rem; border-top: 1px solid var(--borda); }
+.gastos-cupom-itens td:first-child { padding-right: .6rem; overflow-wrap: anywhere; }
+.gastos-controle { margin-top: .5rem; }
+.gastos-formas { margin-top: .8rem; }
 
 /* ── visualizador de fotos e galeria de falhas ────────────────────────────── */
 .visualizador-foto {
@@ -1564,6 +1590,7 @@ svg.grafico-historico {
   cursor: pointer;
 }
 .cardapio-nav:hover { background: var(--realce); }
+.cardapio-nav:disabled { opacity: .4; cursor: default; background: var(--painel); }
 .cardapio-btn-hoje { flex-shrink: 0; padding: .5rem .8rem; }
 .cardapio-guia { margin: 0 0 .8rem; text-align: center; }
 

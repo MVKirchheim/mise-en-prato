@@ -806,39 +806,249 @@ carregadores.enviar = async () => {
 };
 
 /* ── gastos ───────────────────────────────────────────────────────────────── */
+/* Texto que vem do banco (nome de loja, descrição de produto, morador) passa
+   por aqui antes de virar HTML. */
+const escapar = (texto) => String(texto ?? '')
+  .replace(/&/g, '&amp;')
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;')
+  .replace(/'/g, '&#39;');
+
+const MESES_EXTENSO = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho',
+  'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
+const MAIORES_PADRAO = 15;
+/* "2026-11" pelo relógio LOCAL. toISOString() é UTC: na noite do último dia do
+   mês, no Brasil, ele já estaria no mês seguinte. */
+const mesLocal = (d = new Date()) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+const somarMes = (mes, n) => {
+  const [a, m] = mes.split('-').map(Number);
+  const i = a * 12 + (m - 1) + n;
+  return `${Math.floor(i / 12)}-${String((i % 12) + 1).padStart(2, '0')}`;
+};
+const mesExtenso = (mes) => {
+  const [a, m] = mes.split('-');
+  return `${MESES_EXTENSO[Number(m) - 1]} de ${a}`;
+};
+
 function barras(itens, rotulo) {
   const maior = Math.max(...itens.map((i) => Number(i.total)), 0.01);
   return itens.map((i) => `
     <div class="barra">
-      <span>${i[rotulo]}</span><span class="num">${dinheiro(i.total)}</span>
+      <span>${escapar(i[rotulo])}</span><span class="num">${dinheiro(i.total)}</span>
       <div class="trilho"><div class="preenchida" style="width:${(Number(i.total) / maior) * 100}%"></div></div>
     </div>`).join('') || '<div class="fraca">sem dados</div>';
 }
 
 /* Gráfico de colunas em SVG puro. Barra do mês em foco fica destacada; o resto
-   fica apagado, para o olho achar o mês sem precisar de legenda. */
+   fica apagado, para o olho achar o mês sem precisar de legenda. Cada coluna
+   tem por cima um alvo transparente da altura toda: é ele que recebe o toque e
+   o teclado, porque a barra de um mês barato (ou zerado) é fina demais.
+   Os rótulos ficam fora do SVG: com preserveAspectRatio="none" o texto dentro
+   dele sairia esticado. */
 function grafico(meses, emFoco) {
   if (!meses.length) return '<div class="fraca">sem dados</div>';
   const dados = meses.slice().reverse();
   const maior = Math.max(...dados.map((m) => Number(m.total)), 0.01);
   const largura = 100 / dados.length;
   const colunas = dados.map((m, k) => {
-    const altura = (Number(m.total) / maior) * 78;
-    return `<rect class="${m.mes === emFoco ? '' : 'apagada'}"
-                  x="${k * largura + largura * 0.15}%" y="${88 - altura}%"
+    const altura = (Number(m.total) / maior) * 92;
+    const foco = m.mes === emFoco;
+    return `<rect class="${foco ? '' : 'apagada'}" data-coluna="${m.mes}"
+                  x="${k * largura + largura * 0.15}%" y="${100 - altura}%"
                   width="${largura * 0.7}%" height="${altura}%" rx="2"/>
-            <text x="${k * largura + largura * 0.5}%" y="99%" text-anchor="middle">${mesLongo(m.mes)}</text>`;
+            <rect class="alvo" data-mes="${m.mes}" x="${k * largura}%" y="0"
+                  width="${largura}%" height="100%" tabindex="0" role="button"
+                  aria-pressed="${foco}" aria-label="${mesExtenso(m.mes)}, ${dinheiro(m.total)}"/>`;
+  }).join('');
+  const rotulos = dados.map((m, k) => {
+    const [a, x] = m.mes.split('-');
+    const ano = k === 0 || x === '01' ? a.slice(2) : '';
+    return `<span class="${m.mes === emFoco ? 'em-foco' : ''}" data-rotulo="${m.mes}">${
+      MESES_EXTENSO[Number(x) - 1].slice(0, 3)}<small>${ano}</small></span>`;
   }).join('');
   return `<svg class="grafico" viewBox="0 0 100 100" preserveAspectRatio="none"
-               role="img" aria-label="gasto por mês">${colunas}</svg>`;
+               role="group" aria-label="Gasto por mês. Escolha um mês para ver o detalhe.">${colunas}</svg>
+          <div class="grafico-rotulos" aria-hidden="true"
+               style="grid-template-columns:repeat(${dados.length},minmax(0,1fr))">${rotulos}</div>`;
 }
 
-carregadores.gastos = async () => {
-  const { resumo, meses } = await api('/api/gastos');
+/* Destaca o mês escolhido no gráfico que já está na tela, antes da resposta
+   chegar: o toque tem retorno na hora. */
+function marcarMesNoGrafico(mes) {
+  document.querySelectorAll('#grafico-meses [data-coluna]').forEach((r) => {
+    r.classList.toggle('apagada', r.dataset.coluna !== mes);
+  });
+  document.querySelectorAll('#grafico-meses [data-mes]').forEach((r) => {
+    r.setAttribute('aria-pressed', String(r.dataset.mes === mes));
+  });
+  document.querySelectorAll('#grafico-meses [data-rotulo]').forEach((r) => {
+    r.classList.toggle('em-foco', r.dataset.rotulo === mes);
+  });
+}
+
+function renderNutri(nutri) {
+  const caixaNutri = $('#perfil-nutricional-secao');
+  if (!caixaNutri) return;
+  if (nutri && Number(nutri.total_classificado) > 0) {
+    const totalClass = Number(nutri.total_classificado);
+    const fatias = nutri.por_nova.map((g) => {
+      const pct = (Number(g.total) / totalClass) * 100;
+      return `<div class="fatia-nova fatia-nova-${g.grupo}" style="width:${pct.toFixed(1)}%" title="${g.rotulo}: ${pct.toFixed(0)}%"></div>`;
+    }).join('');
+
+    const linhasGrupos = nutri.por_nova.map((g) => {
+      const pct = ((Number(g.total) / totalClass) * 100).toFixed(0);
+      return `
+        <div class="linha" style="font-size:.85rem;margin-top:.35rem">
+          <span><span class="badge-nova nova-${g.grupo}">NOVA ${g.grupo}</span> ${g.rotulo}</span>
+          <span class="num">${dinheiro(g.total)} <span class="fraca">(${pct}%)</span></span>
+        </div>`;
+    }).join('');
+
+    caixaNutri.innerHTML = `
+      <div class="cartao">
+        <div class="linha">
+          <strong>Qualidade Alimentar da Cesta</strong>
+          <span class="selo ${nutri.percentual_ultraprocessados > 40 ? 'aviso' : ''}">
+            ${nutri.percentual_ultraprocessados}% ultraprocessados
+          </span>
+        </div>
+        <div class="barra-nutri-progresso">${fatias}</div>
+        <div class="fraca" style="font-size:.78rem;margin-bottom:.6rem">
+          Classificação NOVA · ${dinheiro(nutri.total_classificado)} de compras identificadas
+        </div>
+        ${linhasGrupos}
+      </div>`;
+  } else {
+    caixaNutri.innerHTML = '';
+  }
+}
+
+function tabelaProdutos(lista) {
+  return lista.length
+    ? `<table>${lista.map((p) => `
+        <tr class="clicavel" onclick="verProduto(${Number(p.produto_id)})">
+          <td>${escapar(p.descricao)}<div class="fraca">${escapar(quanto(p.quantidade, p.unidade))}
+            ${p.compras > 1 ? `em ${p.compras} compras` : 'em 1 compra'}</div></td>
+          <td class="num">${dinheiro(p.total)}</td></tr>`).join('')}</table>`
+    : '<div class="fraca">sem dados</div>';
+}
+
+function renderMaiores() {
+  const { resumo, todos, vendoTodos } = estadoGastos;
+  const lista = vendoTodos && todos ? todos : resumo.maiores;
+  let controle = '';
+  if (vendoTodos) {
+    controle = `<button type="button" class="btn-link-secundario" data-maiores="recolher">
+      mostrar só os ${MAIORES_PADRAO} maiores</button>`;
+  } else if (resumo.maiores.length >= MAIORES_PADRAO) {
+    controle = `<button type="button" class="btn-link-secundario" data-maiores="todos">
+      ver todos os produtos do mês</button>`;
+  }
+  $('#maiores').innerHTML = tabelaProdutos(lista)
+    + (controle ? `<div class="gastos-controle">${controle}</div>` : '');
+}
+
+async function verTodosProdutos(botao) {
+  const { mes, pedido } = estadoGastos;
+  if (!estadoGastos.todos) {
+    botao.disabled = true;
+    botao.textContent = 'carregando…';
+    try {
+      const { resumo } = await api(`/api/gastos?mes=${encodeURIComponent(mes)}&limite=0`);
+      if (pedido !== estadoGastos.pedido) return;
+      estadoGastos.todos = resumo.maiores;
+    } catch (erro) {
+      if (pedido !== estadoGastos.pedido) return;
+      botao.disabled = false;
+      botao.textContent = `não deu para carregar (${erro.message}); tentar de novo`;
+      return;
+    }
+  }
+  estadoGastos.vendoTodos = true;
+  renderMaiores();
+  $('#maiores [data-maiores]')?.focus();
+}
+
+function recolherProdutos() {
+  estadoGastos.vendoTodos = false;
+  renderMaiores();
+  $('#maiores [data-maiores]')?.focus();
+  $('#maiores').scrollIntoView({ block: 'nearest' });
+}
+
+function listaCupons(cupons) {
+  if (!cupons.length) return '<div class="fraca">Nenhum cupom neste mês.</div>';
+  return `<div class="lista">${cupons.map((c, k) => `
+    <div class="gastos-cupom">
+      <button type="button" class="gastos-cupom-cabeca linha" aria-expanded="false"
+              aria-controls="gastos-cupom-${k}" data-chave="${escapar(c.chave)}">
+        <span class="gastos-cupom-loja">${escapar(c.loja || 'loja desconhecida')}
+          <span class="fraca">${dia(c.emitido_em)} · ${escapar(c.morador || '—')} · ${
+            c.itens === 1 ? '1 item' : `${c.itens} itens`}</span>
+          ${c.completo ? '' : '<span class="selo aviso">incompleto: conta no total, mas pede revisão</span>'}
+        </span>
+        <span class="num gastos-cupom-valor"><strong>${dinheiro(c.valor_pago)}</strong>${
+          Number(c.desconto) > 0 ? `<span class="fraca">desconto −${dinheiro(c.desconto)}</span>` : ''}</span>
+      </button>
+      <div class="gastos-cupom-itens" id="gastos-cupom-${k}" hidden></div>
+    </div>`).join('')}</div>`;
+}
+
+function itensDoCupom(itens) {
+  if (!itens.length) return '<div class="fraca">Este cupom entrou sem os itens.</div>';
+  return `<table>${itens.map((i) => `
+    <tr><td>${escapar(i.descricao)}<div class="fraca">${escapar(quanto(i.quantidade, i.unidade))}</div></td>
+        <td class="num">${dinheiro(i.valor_total)}</td></tr>`).join('')}</table>`;
+}
+
+async function abrirCupom(botao) {
+  const caixa = botao.nextElementSibling;
+  const abrir = botao.getAttribute('aria-expanded') !== 'true';
+  botao.setAttribute('aria-expanded', String(abrir));
+  caixa.hidden = !abrir;
+  if (!abrir || caixa.dataset.carregado) return;
+  caixa.dataset.carregado = '1';
+  caixa.innerHTML = '<div class="fraca">carregando itens…</div>';
+  try {
+    const c = await api('/api/cupom/' + encodeURIComponent(botao.dataset.chave));
+    caixa.innerHTML = itensDoCupom(c.itens || []);
+  } catch (erro) {
+    delete caixa.dataset.carregado;
+    caixa.innerHTML = `<div class="fraca">${escapar(erro.message)}</div>`;
+  }
+}
+
+/* Só aparece quando o mês tem o dado: bloco vazio pareceria "não houve
+   desconto" quando o certo é "não sei". */
+function renderPagamento(resumo) {
+  const secao = $('#gastos-pagamento-secao');
+  const formas = resumo.por_forma_pagamento || [];
+  const desconto = Number(resumo.desconto_total || 0);
+  const sem = resumo.cupons_sem_forma_pagamento || 0;
+  if (!formas.length && desconto <= 0) {
+    secao.hidden = true;
+    $('#gastos-pagamento').innerHTML = '';
+    return;
+  }
+  $('#gastos-pagamento').innerHTML = `
+    <div class="cartao">
+      <div class="linha"><span>Descontos no mês</span>
+        <strong class="num">${desconto > 0 ? '−' : ''}${dinheiro(resumo.desconto_total)}</strong></div>
+      <div class="fraca">já abatidos: o total do mês é o valor pago</div>
+      ${formas.length ? `<div class="gastos-formas">${barras(formas, 'forma')}</div>` : ''}
+      ${sem ? `<div class="fraca">${sem === 1 ? '1 cupom' : `${sem} cupons`} sem forma de pagamento registrada</div>` : ''}
+    </div>`;
+  secao.hidden = false;
+}
+
+function renderTopo(resumo) {
   const delta = Number(resumo.variacao);
   $('#gastos-topo').innerHTML = `
     <div class="cartao">
-      <div class="fraca">${mesLongo(resumo.mes)} · ${resumo.cupons} cupons</div>
+      <div class="fraca">${mesLongo(resumo.mes)} · ${resumo.cupons === 1 ? '1 cupom' : `${resumo.cupons} cupons`}</div>
       <div class="grande num">${dinheiro(resumo.total)}</div>
       <div class="fraca">
         ${delta === 0 ? 'igual ao mês anterior'
@@ -847,56 +1057,112 @@ carregadores.gastos = async () => {
              (${dinheiro(resumo.total_anterior)})`}
       </div>
     </div>`;
+}
 
-  const nutri = resumo.perfil_nutricional;
-  const caixaNutri = $('#perfil-nutricional-secao');
-  if (caixaNutri) {
-    if (nutri && Number(nutri.total_classificado) > 0) {
-      const totalClass = Number(nutri.total_classificado);
-      const fatias = nutri.por_nova.map((g) => {
-        const pct = (Number(g.total) / totalClass) * 100;
-        return `<div class="fatia-nova fatia-nova-${g.grupo}" style="width:${pct.toFixed(1)}%" title="${g.rotulo}: ${pct.toFixed(0)}%"></div>`;
-      }).join('');
-
-      const linhasGrupos = nutri.por_nova.map((g) => {
-        const pct = ((Number(g.total) / totalClass) * 100).toFixed(0);
-        return `
-          <div class="linha" style="font-size:.85rem;margin-top:.35rem">
-            <span><span class="badge-nova nova-${g.grupo}">NOVA ${g.grupo}</span> ${g.rotulo}</span>
-            <span class="num">${dinheiro(g.total)} <span class="fraca">(${pct}%)</span></span>
-          </div>`;
-      }).join('');
-
-      caixaNutri.innerHTML = `
-        <div class="cartao">
-          <div class="linha">
-            <strong>Qualidade Alimentar da Cesta</strong>
-            <span class="selo ${nutri.percentual_ultraprocessados > 40 ? 'aviso' : ''}">
-              ${nutri.percentual_ultraprocessados}% ultraprocessados
-            </span>
-          </div>
-          <div class="barra-nutri-progresso">${fatias}</div>
-          <div class="fraca" style="font-size:.78rem;margin-bottom:.6rem">
-            Classificação NOVA · ${dinheiro(nutri.total_classificado)} de compras identificadas
-          </div>
-          ${linhasGrupos}
-        </div>`;
-    } else {
-      caixaNutri.innerHTML = '';
-    }
+function renderGrafico(meses, mes) {
+  const caixa = $('#grafico-meses');
+  const ativo = document.activeElement;
+  const tinhaFoco = caixa.contains(ativo);
+  const mesFocado = tinhaFoco && ativo.dataset ? ativo.dataset.mes : null;
+  caixa.innerHTML = grafico(meses, mes);
+  if (tinhaFoco) {
+    (caixa.querySelector(`[data-mes="${mesFocado}"]`) || caixa.querySelector(`[data-mes="${mes}"]`))
+      ?.focus();
   }
+}
 
-  $('#grafico-meses').innerHTML = grafico(meses, resumo.mes);
+function navGastos(mes) {
+  $('#gastos-mes').textContent = mesExtenso(mes);
+  const seguinte = $('#gastos-seguinte');
+  const bloquear = mes >= mesLocal();
+  if (bloquear && document.activeElement === seguinte) $('#gastos-anterior').focus();
+  seguinte.disabled = bloquear;
+}
+
+/* `pedido` conta as trocas de mês: resposta que chega atrasada, de um mês que
+   já não está em foco, é descartada em vez de pintar por cima do atual. */
+const estadoGastos = { mes: null, pedido: 0, resumo: null, todos: null, vendoTodos: false };
+
+async function carregarGastos(mes) {
+  const atual = mesLocal();
+  if (mes > atual) mes = atual;
+  estadoGastos.mes = mes;
+  estadoGastos.resumo = null;
+  estadoGastos.todos = null;
+  estadoGastos.vendoTodos = false;
+  const pedido = ++estadoGastos.pedido;
+  const vigente = () => pedido === estadoGastos.pedido;
+
+  // Nada do mês anterior fica na tela fingindo ser do novo.
+  navGastos(mes);
+  marcarMesNoGrafico(mes);
+  const carregando = '<div class="fraca">carregando…</div>';
+  $('#gastos-topo').innerHTML = `<div class="cartao">${carregando}</div>`;
+  $('#perfil-nutricional-secao').innerHTML = '';
+  ['#por-loja', '#por-morador', '#maiores', '#gastos-cupons'].forEach((s) => {
+    $(s).innerHTML = carregando;
+  });
+  $('#gastos-pagamento-secao').hidden = true;
+
+  const q = encodeURIComponent(mes);
+  let dados;
+  let lista;
+  try {
+    [dados, lista] = await Promise.all([
+      api(`/api/gastos?mes=${q}`),
+      api(`/api/gastos/cupons?mes=${q}`),
+    ]);
+  } catch (erro) {
+    if (!vigente()) return;
+    $('#gastos-topo').innerHTML = `<div class="estado ruim">${escapar(erro.message)}</div>`;
+    ['#por-loja', '#por-morador', '#maiores', '#gastos-cupons'].forEach((s) => {
+      $(s).innerHTML = '';
+    });
+    return;
+  }
+  if (!vigente()) return;
+
+  const { resumo, meses } = dados;
+  estadoGastos.resumo = resumo;
+  renderTopo(resumo);
+  renderNutri(resumo.perfil_nutricional);
+  renderGrafico(meses, mes);
   $('#por-loja').innerHTML = barras(resumo.por_loja, 'loja');
   $('#por-morador').innerHTML = barras(resumo.por_morador, 'morador');
-  $('#maiores').innerHTML = resumo.maiores.length
-    ? `<table>${resumo.maiores.map((p) => `
-        <tr class="clicavel" onclick="verProduto(${p.produto_id})">
-          <td>${p.descricao}<div class="fraca">${quanto(p.quantidade, p.unidade)}
-            ${p.compras > 1 ? `em ${p.compras} compras` : 'em 1 compra'}</div></td>
-          <td class="num">${dinheiro(p.total)}</td></tr>`).join('')}</table>`
-    : '<div class="fraca">sem dados</div>';
-};
+  renderMaiores();
+  $('#gastos-cupons').innerHTML = listaCupons(lista.cupons);
+  renderPagamento(resumo);
+}
+
+function escolherMes(mes) {
+  if (mes && mes !== estadoGastos.mes && mes <= mesLocal()) carregarGastos(mes);
+}
+
+$('#gastos-anterior').onclick = () => carregarGastos(somarMes(estadoGastos.mes || mesLocal(), -1));
+$('#gastos-seguinte').onclick = () => escolherMes(somarMes(estadoGastos.mes || mesLocal(), 1));
+$('#grafico-meses').addEventListener('click', (ev) => {
+  const alvo = ev.target.closest('[data-mes]');
+  if (alvo) escolherMes(alvo.dataset.mes);
+});
+$('#grafico-meses').addEventListener('keydown', (ev) => {
+  if (ev.key !== 'Enter' && ev.key !== ' ') return;
+  const alvo = ev.target.closest('[data-mes]');
+  if (!alvo) return;
+  ev.preventDefault();
+  escolherMes(alvo.dataset.mes);
+});
+$('#gastos-cupons').addEventListener('click', (ev) => {
+  const botao = ev.target.closest('button[data-chave]');
+  if (botao) abrirCupom(botao);
+});
+$('#maiores').addEventListener('click', (ev) => {
+  const botao = ev.target.closest('button[data-maiores]');
+  if (!botao || !estadoGastos.resumo) return;
+  if (botao.dataset.maiores === 'todos') verTodosProdutos(botao);
+  else recolherProdutos();
+});
+
+carregadores.gastos = () => carregarGastos(estadoGastos.mes || mesLocal());
 
 /* ── produtos ─────────────────────────────────────────────────────────────── */
 let buscaAgendada;

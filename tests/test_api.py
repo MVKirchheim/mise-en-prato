@@ -51,7 +51,9 @@ def test_gastos_do_mes(cliente):
     assert agosto["resumo"]["cupons"] == 1
     assert agosto["resumo"]["por_loja"][0]["loja"] == "LAR COOPERATIVA AGROINDUSTRIAL"
     assert agosto["resumo"]["por_morador"][0]["morador"] == "Miguel"
-    assert agosto["meses"][0]["mes"] == "2026-08"
+    # A janela termina no mês corrente e mostra agosto mesmo que haja meses
+    # vazios depois dele (ver test_gastos.py).
+    assert {"mes": "2026-08", "total": "106.74", "cupons": 1} in agosto["meses"]
 
 
 def test_dinheiro_sai_como_string_e_nao_como_float(cliente):
