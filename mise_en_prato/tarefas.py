@@ -9,6 +9,7 @@ vigia) vale para quem não divide banco com ninguém.
 Hoje há uma tarefa: o backup diário. O vigia de preços entra aqui quando o
 detector de dado envenenado estiver de pé — ver o README.
 """
+
 import asyncio
 import logging
 import sqlite3
@@ -17,8 +18,8 @@ from pathlib import Path
 
 log = logging.getLogger("mise_en_prato.tarefas")
 
-INTERVALO_BACKUP = 6 * 60 * 60      # confere de 6 em 6 horas; grava uma vez por dia
-GUARDAR = 7                          # mesma conta do GUARDAR_BACKUPS do vigia
+INTERVALO_BACKUP = 6 * 60 * 60  # confere de 6 em 6 horas; grava uma vez por dia
+GUARDAR = 7  # mesma conta do GUARDAR_BACKUPS do vigia
 
 
 def fazer_backup(con: sqlite3.Connection, pasta: Path, guardar: int = GUARDAR) -> Path | None:

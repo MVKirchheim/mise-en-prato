@@ -47,6 +47,7 @@ E as duas fotos que resistiram às 840 tentativas não são defeito de
 decodificador: aquele QR está fisicamente perdido. Para elas o caminho é outro,
 digitar a chave de acesso que continua impressa no papel — `consulta_chave.py`.
 """
+
 import logging
 from io import BytesIO
 
@@ -84,8 +85,8 @@ def _reduzir(imagem: Image.Image, lado: int) -> Image.Image | None:
     raio = max(1.0, 0.9 / fator)
     suave = imagem.filter(ImageFilter.GaussianBlur(raio))
     return suave.resize(
-        (max(1, round(imagem.width * fator)), max(1, round(imagem.height * fator))),
-        Image.LANCZOS)
+        (max(1, round(imagem.width * fator)), max(1, round(imagem.height * fator))), Image.LANCZOS
+    )
 
 
 def _tentativas(imagem: Image.Image):
@@ -109,8 +110,10 @@ def _tentativas(imagem: Image.Image):
 
     # 4. preto no branco, sem meio-termo.
     for lado, menor in reduzidas[:3] or [(0, base)]:
-        yield f"binarizada {lado}", ImageOps.autocontrast(menor, cutoff=2).point(
-            lambda p: 255 if p > 128 else 0)
+        yield (
+            f"binarizada {lado}",
+            ImageOps.autocontrast(menor, cutoff=2).point(lambda p: 255 if p > 128 else 0),
+        )
 
     # 5. ampliar, para o caso oposto: QR pequenininho num quadro grande.
     if max(base.size) < 1200:
@@ -127,13 +130,17 @@ def _limpar_qr(texto: str) -> str:
 
 
 def _por_zbar(imagem: Image.Image) -> list[str]:
-    return [_limpar_qr(c.data.decode("utf-8", "replace"))
-            for c in decode(imagem, symbols=[ZBarSymbol.QRCODE])]
+    return [
+        _limpar_qr(c.data.decode("utf-8", "replace"))
+        for c in decode(imagem, symbols=[ZBarSymbol.QRCODE])
+    ]
 
 
 def _por_zxing(imagem: Image.Image) -> list[str]:
-    return [_limpar_qr(r.text) for r in zxingcpp.read_barcodes(
-        imagem, formats=zxingcpp.BarcodeFormat.QRCode)]
+    return [
+        _limpar_qr(r.text)
+        for r in zxingcpp.read_barcodes(imagem, formats=zxingcpp.BarcodeFormat.QRCode)
+    ]
 
 
 # Na ordem em que são tentados. O zbar primeiro porque é o que já resolvia o
@@ -152,16 +159,25 @@ def ler_qr(dados: bytes) -> list[str]:
     except Exception as erro:
         raise ValueError(f"não consegui abrir a imagem: {erro}") from erro
 
-    log.info("foto recebida: %s %sx%s, %d KB",
-             imagem.format, imagem.width, imagem.height, len(dados) // 1024)
+    log.info(
+        "foto recebida: %s %sx%s, %d KB",
+        imagem.format,
+        imagem.width,
+        imagem.height,
+        len(dados) // 1024,
+    )
 
     for nome, variante in _tentativas(imagem):
         for decodificador, ler in DECODIFICADORES:
             achados = ler(variante)
             if achados:
                 limpos = [_limpar_qr(a) for a in achados]
-                log.info("QR achado por %s na tentativa '%s' (%d código(s))",
-                         decodificador, nome, len(limpos))
+                log.info(
+                    "QR achado por %s na tentativa '%s' (%d código(s))",
+                    decodificador,
+                    nome,
+                    len(limpos),
+                )
                 return limpos
         log.debug("tentativa '%s': nada", nome)
 

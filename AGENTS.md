@@ -34,11 +34,11 @@ O host de desenvolvimento (`MiguelPC`) não executa Python/pip diretamente. **NU
 
 - **Linter (Obrigatório antes do commit):**
   ```bash
-  docker compose run --rm cupomzinho ruff check .
+  docker compose run --rm dev ruff check .
 
 - **Testes (Obrigatório antes do commit):**
   ```bash
-  docker compose run --rm cupomzinho pytest -q
+  docker compose run --rm dev pytest -q
   ```
 
   Assim que rodar os comandos do Docker acima, me avise se o `pytest` terminou 100% verde ou se apontou alguma falha.

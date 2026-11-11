@@ -732,9 +732,7 @@ def obter_receita(con: sqlite3.Connection, receita_id: int) -> Receita | None:
     )
 
 
-def listar_receitas(
-    con: sqlite3.Connection, categoria: str | None = None
-) -> list[Receita]:
+def listar_receitas(con: sqlite3.Connection, categoria: str | None = None) -> list[Receita]:
     """Lista todas as receitas cadastradas com seus respectivos ingredientes."""
     campos_receita = (
         "id, nome, porcoes, tempo_preparo_min, instrucoes, criada_em, categoria, foto_caminho"
@@ -915,7 +913,9 @@ def listar_categorias(con: sqlite3.Connection) -> list[str]:
     return [r["categoria"] for r in rows]
 
 
-def calcular_fator_rendimento(porcoes_original: int | Decimal, porcoes_desejado: int | Decimal) -> Decimal:
+def calcular_fator_rendimento(
+    porcoes_original: int | Decimal, porcoes_desejado: int | Decimal
+) -> Decimal:
     """Calcula o fator de rendimento entre as porções originais e desejadas.
 
     Args:
@@ -936,6 +936,7 @@ def calcular_fator_rendimento(porcoes_original: int | Decimal, porcoes_desejado:
 
     fator = Decimal(porcoes_desejado) / Decimal(porcoes_original)
     return fator.normalize()
+
 
 def escalar_receita(receita: Receita, novas_porcoes: int) -> Receita:
     """Escala as quantidades dos ingredientes para novas porções usando Decimal puro.

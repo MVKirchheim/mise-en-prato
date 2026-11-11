@@ -24,6 +24,7 @@ no cupom real que serve de fixture:
 É por causa disso que aqui se usa lxml, e não o html.parser da stdlib: o
 html.parser tropeça nessas construções, o lxml as engole como um navegador.
 """
+
 import re
 import sys
 import unicodedata
@@ -70,7 +71,7 @@ def _checar_erro_sefaz(html: str, sopa: BeautifulSoup | None = None) -> None:
             ):
                 idx = baixo.find(padrao)
                 if idx != -1:
-                    trecho = html[idx:idx + 160].split("<")[0]
+                    trecho = html[idx : idx + 160].split("<")[0]
                     msg = _limpar(trecho)
                     break
         raise ErroSefaz(msg or "Não foi possível executar a operação no portal da SEFAZ")
@@ -93,14 +94,13 @@ class Estabelecimento:
 class Item:
     seq: int
     descricao: str
-    codigo_loja: str          # o "(Código: 456641)" — é interno da loja, NÃO é GTIN
+    codigo_loja: str  # o "(Código: 456641)" — é interno da loja, NÃO é GTIN
     quantidade: Decimal
     unidade: str
     valor_unitario: Decimal
     valor_total: Decimal
     gtin: str | None = None
     ncm: str | None = None
-
 
 
 @dataclass
@@ -112,9 +112,9 @@ class Cupom:
     numero: str = ""
     serie: str = ""
     protocolo: str = ""
-    total: Decimal | None = None          # "Valor total R$", antes do desconto
+    total: Decimal | None = None  # "Valor total R$", antes do desconto
     desconto: Decimal = Decimal("0")
-    valor_pago: Decimal | None = None     # "Valor a pagar R$"
+    valor_pago: Decimal | None = None  # "Valor a pagar R$"
     qtd_itens: int | None = None
     forma_pagamento: str = ""
     consumidor: str = ""
@@ -137,7 +137,7 @@ def _limpar(texto: str) -> str:
 
 
 def dinheiro(texto: str) -> Decimal | None:
-    """"1.234,56" -> Decimal("1234.56"). Devolve None se não houver número."""
+    """ "1.234,56" -> Decimal("1234.56"). Devolve None se não houver número."""
     achado = re.search(r"-?[\d.]*\d(?:,\d+)?", texto or "")
     if not achado:
         return None
@@ -216,8 +216,9 @@ def dados_da_chave(chave: str) -> dict:
 
 
 def cnpj_formatado(cnpj: str) -> str:
-    return f"{cnpj[:2]}.{cnpj[2:5]}.{cnpj[5:8]}/{cnpj[8:12]}-{cnpj[12:]}" if len(
-        cnpj) == 14 else cnpj
+    return (
+        f"{cnpj[:2]}.{cnpj[2:5]}.{cnpj[5:8]}/{cnpj[8:12]}-{cnpj[12:]}" if len(cnpj) == 14 else cnpj
+    )
 
 
 # ── a leitura ────────────────────────────────────────────────────────────────
@@ -244,9 +245,14 @@ def _ler_estabelecimento(sopa, avisos: list[str]) -> Estabelecimento:
     partes = [_limpar(p) for p in endereco.split(",")] if endereco else []
     partes += [""] * (6 - len(partes))
     return Estabelecimento(
-        cnpj=cnpj, razao=razao,
-        logradouro=partes[0], numero=partes[1], complemento=partes[2],
-        bairro=partes[3], municipio=partes[4], uf=partes[5],
+        cnpj=cnpj,
+        razao=razao,
+        logradouro=partes[0],
+        numero=partes[1],
+        complemento=partes[2],
+        bairro=partes[3],
+        municipio=partes[4],
+        uf=partes[5],
     )
 
 
@@ -267,8 +273,9 @@ def _ler_itens(sopa, avisos: list[str]) -> list[Item]:
     itens: list[Item] = []
     # id="Item + 1" tem espaço: nenhum seletor de id serve, então varre-se as
     # linhas e filtra-se pelo prefixo.
-    linhas = [tr for tr in sopa.select("table#tabResult tr")
-              if (tr.get("id") or "").startswith("Item")]
+    linhas = [
+        tr for tr in sopa.select("table#tabResult tr") if (tr.get("id") or "").startswith("Item")
+    ]
     if not linhas:
         avisos.append("nenhum item encontrado na nota")
 
@@ -277,8 +284,8 @@ def _ler_itens(sopa, avisos: list[str]) -> list[Item]:
         # (pela chave digitada) serve a MESMA linha com txtTit. Medido em
         # 30/08/2026: fora essa classe, as duas telas são idênticas item a item.
         descricao = _campo(tr, "txtTit2") or _campo(tr, "txtTit")
-        codigo = re.sub(r"\D", "", _campo(tr, "RCod"))            # "(Código: 456641)"
-        quantidade = dinheiro(_campo(tr, "Rqtd", "Qtde.:"))      # fracionária em item por peso
+        codigo = re.sub(r"\D", "", _campo(tr, "RCod"))  # "(Código: 456641)"
+        quantidade = dinheiro(_campo(tr, "Rqtd", "Qtde.:"))  # fracionária em item por peso
         unidade = _campo(tr, "RUN", "UN:")
         unitario = dinheiro(_campo(tr, "RvlUnit", "Vl. Unit.:"))
         total = dinheiro(_campo(tr, "valor"))
@@ -327,7 +334,7 @@ def _ler_totais(sopa, cupom: Cupom) -> None:
         if not valor:
             continue
         if pagamento_comecou:
-            if "tributos" in chave_rotulo:      # a linha da Lei 12.741 não é pagamento
+            if "tributos" in chave_rotulo:  # a linha da Lei 12.741 não é pagamento
                 continue
             pago = dinheiro(valor.get_text())
             if pago is not None:
@@ -423,9 +430,14 @@ def _ler_sped_completo(sopa, chave: str, avisos: list[str]) -> Cupom:
     partes = [_limpar(p) for p in endereco_bruto.split(",")] if endereco_bruto else []
     partes += [""] * (6 - len(partes))
     estab = Estabelecimento(
-        cnpj=cnpj, razao=razao,
-        logradouro=partes[0], numero=partes[1], complemento=partes[2],
-        bairro=partes[3], municipio=partes[4], uf=partes[5],
+        cnpj=cnpj,
+        razao=razao,
+        logradouro=partes[0],
+        numero=partes[1],
+        complemento=partes[2],
+        bairro=partes[3],
+        municipio=partes[4],
+        uf=partes[5],
     )
     if not estab.razao:
         avisos.append("razão social do emitente não reconhecida")
@@ -552,14 +564,11 @@ def _ler_sped_completo(sopa, chave: str, avisos: list[str]) -> Cupom:
             or valor_por_label(bloco_tot, "Valor Total")
         )
     )
-    desconto = (
-        dinheiro(
-            _limpar(sopa.select_one("span.desconto").get_text())
-            if sopa.select_one("span.desconto")
-            else valor_por_label(bloco_tot, "Desconto")
-        )
-        or Decimal("0")
-    )
+    desconto = dinheiro(
+        _limpar(sopa.select_one("span.desconto").get_text())
+        if sopa.select_one("span.desconto")
+        else valor_por_label(bloco_tot, "Desconto")
+    ) or Decimal("0")
 
     forma_pgto = (
         _limpar(sopa.select_one("span.forma_pagamento").get_text())
@@ -657,8 +666,10 @@ def _main(argumentos: list[str]) -> int:
     print(f"emitido em {cupom.emitido_em}   nº {cupom.numero}/{cupom.serie}")
     print(f"chave {cupom.chave}\n")
     for i in cupom.itens:
-        print(f"  {i.seq:>3}. {i.descricao[:44]:<46} {i.quantidade:>7} {i.unidade:<4}"
-              f" x {i.valor_unitario:>8} = {i.valor_total:>9}")
+        print(
+            f"  {i.seq:>3}. {i.descricao[:44]:<46} {i.quantidade:>7} {i.unidade:<4}"
+            f" x {i.valor_unitario:>8} = {i.valor_total:>9}"
+        )
     print(f"\n  {'itens:':<16}{cupom.qtd_itens}")
     print(f"  {'total:':<16}{cupom.total}")
     print(f"  {'desconto:':<16}{cupom.desconto}")

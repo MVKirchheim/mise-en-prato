@@ -3,6 +3,7 @@
 Os casos são degradações de propósito do que uma foto de cupom sofre no mundo
 real: QR pequeno num quadro grande, papel térmico sem contraste, foto torta.
 """
+
 from io import BytesIO
 
 import pytest
@@ -11,8 +12,10 @@ from PIL import Image, ImageFilter
 
 from mise_en_prato.qr import ler_qr
 
-URL_QR = ("https://www.fazenda.pr.gov.br/nfce/qrcode?p=41260877752293016191651170001637541131086428"
-          "|2|1|1|1E778A47C5BAEDD69BFCD4A14F8CD2A19C5CD919")
+URL_QR = (
+    "https://www.fazenda.pr.gov.br/nfce/qrcode?p=41260877752293016191651170001637541131086428"
+    "|2|1|1|1E778A47C5BAEDD69BFCD4A14F8CD2A19C5CD919"
+)
 
 
 def _qr(conteudo: str = URL_QR, caixa: int = 8) -> Image.Image:
@@ -41,7 +44,7 @@ def test_qr_pequeno_num_quadro_grande():
 
 def test_cupom_termico_sem_contraste():
     """Papel térmico velho: cinza sobre cinza, não preto sobre branco."""
-    codigo = _qr().point(lambda p: 110 + p // 4)     # esmaga a faixa de tons
+    codigo = _qr().point(lambda p: 110 + p // 4)  # esmaga a faixa de tons
     assert ler_qr(_bytes(codigo)) == [URL_QR]
 
 
@@ -111,6 +114,7 @@ def test_o_modo_de_falha_realmente_derruba_o_zbar_cru():
     passaria de qualquer jeito.
     """
     from pyzbar.pyzbar import ZBarSymbol, decode
+
     assert decode(_chapiscado(), symbols=[ZBarSymbol.QRCODE]) == []
 
 

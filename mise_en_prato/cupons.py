@@ -5,6 +5,7 @@ Reenviar o mesmo cupom não duplica nada: a chave de acesso é a chave primária
 e quem já está gravado volta como está. É de propósito — a mesma foto mandada
 duas vezes é o caso comum, não a exceção.
 """
+
 import json
 import re
 import sqlite3
@@ -15,8 +16,9 @@ from .banco import centavos, milesimos, reais, unidades
 from .nfce_pr import Cupom, normalizar
 
 
-def eh_granel(descricao: str, unidade: str = "", quantidade: Decimal | None = None,
-              codigo_loja: str = "") -> bool:
+def eh_granel(
+    descricao: str, unidade: str = "", quantidade: Decimal | None = None, codigo_loja: str = ""
+) -> bool:
     """Reconhece se o produto é vendido a granel / pesado na balança.
 
     Produtos a granel nunca têm código de barras comercial (GTIN/EAN).
@@ -61,9 +63,15 @@ def _garantir_estabelecimento(con: sqlite3.Connection, e) -> None:
     )
 
 
-def _produto_de(con: sqlite3.Connection, cnpj: str, descricao: str, *,
-                unidade: str = "", quantidade: Decimal | None = None,
-                codigo_loja: str = "") -> int:
+def _produto_de(
+    con: sqlite3.Connection,
+    cnpj: str,
+    descricao: str,
+    *,
+    unidade: str = "",
+    quantidade: Decimal | None = None,
+    codigo_loja: str = "",
+) -> int:
     """Descrição impressa pela loja -> id de produto. Os dois primeiros degraus.
 
     1. `apelido_loja`: se (loja, texto) já foi resolvido, acabou — é o que faz o
@@ -174,6 +182,7 @@ def _tentar_enriquecimento_local(con: sqlite3.Connection, produto_id: int) -> No
     """Tenta enriquecer o produto a partir do catálogo satélite offline, se disponível."""
     try:
         from .enriquecimento import enriquecer_local
+
         enriquecer_local(con, produto_id)
     except Exception:
         pass
@@ -206,8 +215,9 @@ def foto_de_falha_proxima(criado_em_str: str | None) -> str | None:
     return melhor_foto
 
 
-def gravar(con: sqlite3.Connection, cupom: Cupom, *, morador: str,
-           origem: str = "qrcode", url_qr: str = "") -> bool:
+def gravar(
+    con: sqlite3.Connection, cupom: Cupom, *, morador: str, origem: str = "qrcode", url_qr: str = ""
+) -> bool:
     """Grava o cupom inteiro numa transação. Devolve True se era novo ou completou."""
     linha_existente = con.execute(
         "SELECT completo FROM cupom WHERE chave = ?", (cupom.chave,)
@@ -227,14 +237,24 @@ def gravar(con: sqlite3.Connection, cupom: Cupom, *, morador: str,
                        forma_pagamento = ?, consumidor = ?, morador = ?, origem = ?,
                        completo = ?, avisos = ?, url_qr = COALESCE(NULLIF(?, ''), url_qr)
                  WHERE chave = ?""",
-                (cupom.estabelecimento.cnpj,
-                 cupom.emitido_em.isoformat(sep=" ") if cupom.emitido_em else None,
-                 cupom.numero, cupom.serie, cupom.protocolo,
-                 centavos(cupom.total), centavos(cupom.desconto) or 0, centavos(cupom.valor_pago),
-                 cupom.forma_pagamento, cupom.consumidor, morador, origem,
-                 1 if cupom.completo else 0,
-                 json.dumps(cupom.avisos, ensure_ascii=False) if cupom.avisos else None,
-                 url_qr, cupom.chave),
+                (
+                    cupom.estabelecimento.cnpj,
+                    cupom.emitido_em.isoformat(sep=" ") if cupom.emitido_em else None,
+                    cupom.numero,
+                    cupom.serie,
+                    cupom.protocolo,
+                    centavos(cupom.total),
+                    centavos(cupom.desconto) or 0,
+                    centavos(cupom.valor_pago),
+                    cupom.forma_pagamento,
+                    cupom.consumidor,
+                    morador,
+                    origem,
+                    1 if cupom.completo else 0,
+                    json.dumps(cupom.avisos, ensure_ascii=False) if cupom.avisos else None,
+                    url_qr,
+                    cupom.chave,
+                ),
             )
             for item in cupom.itens:
                 produto_id, gtin_var, sabor_adic = _resolver_item_produto(
@@ -251,9 +271,19 @@ def gravar(con: sqlite3.Connection, cupom: Cupom, *, morador: str,
                                          quantidade_milesimos, unitario_centavos, total_centavos,
                                          produto_id, gtin_variante, sabor_adicional)
                        VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
-                    (cupom.chave, item.seq, item.descricao, item.codigo_loja, item.unidade,
-                     milesimos(item.quantidade), centavos(item.valor_unitario),
-                     centavos(item.valor_total), produto_id, gtin_var, sabor_adic),
+                    (
+                        cupom.chave,
+                        item.seq,
+                        item.descricao,
+                        item.codigo_loja,
+                        item.unidade,
+                        milesimos(item.quantidade),
+                        centavos(item.valor_unitario),
+                        centavos(item.valor_total),
+                        produto_id,
+                        gtin_var,
+                        sabor_adic,
+                    ),
                 )
                 if item.gtin or item.ncm:
                     con.execute(
@@ -269,8 +299,12 @@ def gravar(con: sqlite3.Connection, cupom: Cupom, *, morador: str,
                         """INSERT OR IGNORE INTO preco
                                (produto_id, cnpj, unitario_centavos, observado_em, fonte)
                            VALUES (?,?,?,?,'cupom')""",
-                        (produto_id, e.cnpj, centavos(item.valor_unitario),
-                         cupom.emitido_em.isoformat(sep=" ") if cupom.emitido_em else None),
+                        (
+                            produto_id,
+                            e.cnpj,
+                            centavos(item.valor_unitario),
+                            cupom.emitido_em.isoformat(sep=" ") if cupom.emitido_em else None,
+                        ),
                     )
         return True
 
@@ -282,14 +316,25 @@ def gravar(con: sqlite3.Connection, cupom: Cupom, *, morador: str,
                                   forma_pagamento, consumidor, morador, origem, completo,
                                   avisos, url_qr, criado_em)
                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-            (cupom.chave, cupom.estabelecimento.cnpj,
-             cupom.emitido_em.isoformat(sep=" ") if cupom.emitido_em else None,
-             cupom.numero, cupom.serie, cupom.protocolo,
-             centavos(cupom.total), centavos(cupom.desconto) or 0, centavos(cupom.valor_pago),
-             cupom.forma_pagamento, cupom.consumidor, morador, origem,
-             1 if cupom.completo else 0,
-             json.dumps(cupom.avisos, ensure_ascii=False) if cupom.avisos else None,
-             url_qr, datetime.now().isoformat(sep=" ", timespec="seconds")),
+            (
+                cupom.chave,
+                cupom.estabelecimento.cnpj,
+                cupom.emitido_em.isoformat(sep=" ") if cupom.emitido_em else None,
+                cupom.numero,
+                cupom.serie,
+                cupom.protocolo,
+                centavos(cupom.total),
+                centavos(cupom.desconto) or 0,
+                centavos(cupom.valor_pago),
+                cupom.forma_pagamento,
+                cupom.consumidor,
+                morador,
+                origem,
+                1 if cupom.completo else 0,
+                json.dumps(cupom.avisos, ensure_ascii=False) if cupom.avisos else None,
+                url_qr,
+                datetime.now().isoformat(sep=" ", timespec="seconds"),
+            ),
         )
         for item in cupom.itens:
             produto_id, gtin_var, sabor_adic = _resolver_item_produto(
@@ -306,9 +351,19 @@ def gravar(con: sqlite3.Connection, cupom: Cupom, *, morador: str,
                                      quantidade_milesimos, unitario_centavos, total_centavos,
                                      produto_id, gtin_variante, sabor_adicional)
                    VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
-                (cupom.chave, item.seq, item.descricao, item.codigo_loja, item.unidade,
-                 milesimos(item.quantidade), centavos(item.valor_unitario),
-                 centavos(item.valor_total), produto_id, gtin_var, sabor_adic),
+                (
+                    cupom.chave,
+                    item.seq,
+                    item.descricao,
+                    item.codigo_loja,
+                    item.unidade,
+                    milesimos(item.quantidade),
+                    centavos(item.valor_unitario),
+                    centavos(item.valor_total),
+                    produto_id,
+                    gtin_var,
+                    sabor_adic,
+                ),
             )
             if item.gtin or item.ncm:
                 con.execute(
@@ -327,8 +382,12 @@ def gravar(con: sqlite3.Connection, cupom: Cupom, *, morador: str,
                     """INSERT OR IGNORE INTO preco
                            (produto_id, cnpj, unitario_centavos, observado_em, fonte)
                        VALUES (?,?,?,?,'cupom')""",
-                    (produto_id, e.cnpj, centavos(item.valor_unitario),
-                     cupom.emitido_em.isoformat(sep=" ") if cupom.emitido_em else None),
+                    (
+                        produto_id,
+                        e.cnpj,
+                        centavos(item.valor_unitario),
+                        cupom.emitido_em.isoformat(sep=" ") if cupom.emitido_em else None,
+                    ),
                 )
     return True
 
@@ -338,7 +397,9 @@ def ler(con: sqlite3.Connection, chave: str) -> dict | None:
     linha = con.execute(
         """SELECT c.*, e.razao, e.municipio, e.bairro
              FROM cupom c JOIN estabelecimento e ON e.cnpj = c.cnpj
-            WHERE c.chave = ?""", (chave,)).fetchone()
+            WHERE c.chave = ?""",
+        (chave,),
+    ).fetchone()
     if not linha:
         return None
 
@@ -378,8 +439,11 @@ def ler(con: sqlite3.Connection, chave: str) -> dict | None:
         for i in linhas_itens
     ]
     return {
-        "chave": linha["chave"], "loja": linha["razao"], "municipio": linha["municipio"],
-        "emitido_em": linha["emitido_em"], "morador": linha["morador"],
+        "chave": linha["chave"],
+        "loja": linha["razao"],
+        "municipio": linha["municipio"],
+        "emitido_em": linha["emitido_em"],
+        "morador": linha["morador"],
         "total": reais(linha["total_centavos"]),
         "desconto": reais(linha["desconto_centavos"]),
         "valor_pago": reais(linha["pago_centavos"]),
@@ -394,30 +458,46 @@ def ler(con: sqlite3.Connection, chave: str) -> dict | None:
 def fila_de_revisao(con: sqlite3.Connection) -> list[dict]:
     """Cupons que entraram pela metade e esperam um olho humano."""
     return [
-        {"chave": r["chave"], "loja": r["razao"], "cnpj": r["cnpj"],
-         "numero": r["numero"], "serie": r["serie"], "morador": r["morador"],
-         "criado_em": r["criado_em"], "emitido_em": r["emitido_em"],
-         "valor_pago": reais(r["pago_centavos"]),
-         "avisos": json.loads(r["avisos"]) if r["avisos"] else [],
-         "foto": foto_de_falha_proxima(r["criado_em"])}
+        {
+            "chave": r["chave"],
+            "loja": r["razao"],
+            "cnpj": r["cnpj"],
+            "numero": r["numero"],
+            "serie": r["serie"],
+            "morador": r["morador"],
+            "criado_em": r["criado_em"],
+            "emitido_em": r["emitido_em"],
+            "valor_pago": reais(r["pago_centavos"]),
+            "avisos": json.loads(r["avisos"]) if r["avisos"] else [],
+            "foto": foto_de_falha_proxima(r["criado_em"]),
+        }
         for r in con.execute(
             """SELECT c.chave, c.emitido_em, c.criado_em, c.numero, c.serie,
                       c.morador, c.pago_centavos, c.avisos, e.razao, e.cnpj
                  FROM cupom c JOIN estabelecimento e ON e.cnpj = c.cnpj
-                WHERE c.completo = 0 ORDER BY c.criado_em DESC""")
+                WHERE c.completo = 0 ORDER BY c.criado_em DESC"""
+        )
     ]
 
 
 def recentes(con: sqlite3.Connection, limite: int = 20) -> list[dict]:
     return [
-        {"chave": r["chave"], "loja": r["razao"], "emitido_em": r["emitido_em"],
-         "morador": r["morador"], "valor_pago": reais(r["pago_centavos"]),
-         "itens": r["itens"], "completo": bool(r["completo"])}
+        {
+            "chave": r["chave"],
+            "loja": r["razao"],
+            "emitido_em": r["emitido_em"],
+            "morador": r["morador"],
+            "valor_pago": reais(r["pago_centavos"]),
+            "itens": r["itens"],
+            "completo": bool(r["completo"]),
+        }
         for r in con.execute(
             """SELECT c.chave, c.emitido_em, c.morador, c.pago_centavos, c.completo, e.razao,
                       (SELECT COUNT(*) FROM item i WHERE i.chave = c.chave) AS itens
                  FROM cupom c JOIN estabelecimento e ON e.cnpj = c.cnpj
-                ORDER BY c.emitido_em DESC LIMIT ?""", (limite,))
+                ORDER BY c.emitido_em DESC LIMIT ?""",
+            (limite,),
+        )
     ]
 
 
@@ -426,9 +506,16 @@ def total_conferido(cupom: Cupom) -> Decimal:
     return sum((i.valor_total for i in cupom.itens), Decimal("0")) - cupom.desconto
 
 
-def revisar(con: sqlite3.Connection, chave: str, novos_itens: list[dict], *,
-            total: Decimal | None = None, desconto: Decimal | None = None,
-            valor_pago: Decimal | None = None, aprovar: bool = False) -> bool:
+def revisar(
+    con: sqlite3.Connection,
+    chave: str,
+    novos_itens: list[dict],
+    *,
+    total: Decimal | None = None,
+    desconto: Decimal | None = None,
+    valor_pago: Decimal | None = None,
+    aprovar: bool = False,
+) -> bool:
     """Atualiza itens e valores de um cupom em revisão, permitindo aprovação humana."""
     linha = con.execute("SELECT * FROM cupom WHERE chave = ?", (chave,)).fetchone()
     if not linha:
@@ -445,11 +532,19 @@ def revisar(con: sqlite3.Connection, chave: str, novos_itens: list[dict], *,
         tot = Decimal(str(it.get("valor_total", (qtd * unit).quantize(Decimal("0.01")))))
         unidade = (it.get("unidade") or "UN").strip().upper()
         codigo_loja = str(it.get("codigo_loja") or "")
-        itens_parseados.append({
-            "seq": seq, "descricao": desc, "quantidade": qtd, "unidade": unidade,
-            "valor_unitario": unit, "valor_total": tot, "codigo_loja": codigo_loja,
-            "gtin": it.get("gtin"), "ncm": it.get("ncm")
-        })
+        itens_parseados.append(
+            {
+                "seq": seq,
+                "descricao": desc,
+                "quantidade": qtd,
+                "unidade": unidade,
+                "valor_unitario": unit,
+                "valor_total": tot,
+                "codigo_loja": codigo_loja,
+                "gtin": it.get("gtin"),
+                "ncm": it.get("ncm"),
+            }
+        )
         seq += 1
 
     soma_itens = sum((it["valor_total"] for it in itens_parseados), Decimal("0"))
@@ -491,23 +586,33 @@ def revisar(con: sqlite3.Connection, chave: str, novos_itens: list[dict], *,
                                      quantidade_milesimos, unitario_centavos, total_centavos,
                                      produto_id, gtin_variante, sabor_adicional)
                    VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
-                (chave, it["seq"], it["descricao"], it["codigo_loja"], it["unidade"],
-                 milesimos(it["quantidade"]), centavos(it["valor_unitario"]),
-                 centavos(it["valor_total"]), produto_id, gtin_var, sabor_adic),
+                (
+                    chave,
+                    it["seq"],
+                    it["descricao"],
+                    it["codigo_loja"],
+                    it["unidade"],
+                    milesimos(it["quantidade"]),
+                    centavos(it["valor_unitario"]),
+                    centavos(it["valor_total"]),
+                    produto_id,
+                    gtin_var,
+                    sabor_adic,
+                ),
             )
             if it["gtin"] or it["ncm"]:
                 con.execute(
                     """UPDATE produto
                           SET gtin = COALESCE(gtin, ?), ncm = COALESCE(ncm, ?)
                         WHERE id = ?""",
-                    (it["gtin"], it["ncm"], produto_id)
+                    (it["gtin"], it["ncm"], produto_id),
                 )
             _tentar_enriquecimento_local(con, produto_id)
             con.execute(
                 """INSERT OR IGNORE INTO preco
                        (produto_id, cnpj, unitario_centavos, observado_em, fonte)
                    VALUES (?,?,?,?,'cupom')""",
-                (produto_id, linha["cnpj"], centavos(it["valor_unitario"]), linha["emitido_em"])
+                (produto_id, linha["cnpj"], centavos(it["valor_unitario"]), linha["emitido_em"]),
             )
 
         con.execute(
@@ -515,8 +620,14 @@ def revisar(con: sqlite3.Connection, chave: str, novos_itens: list[dict], *,
                    total_centavos = ?, desconto_centavos = ?, pago_centavos = ?,
                    completo = ?, avisos = ?
              WHERE chave = ?""",
-            (centavos(tot_efetivo), centavos(desc) or 0, centavos(pago_efetivo),
-             completo, json.dumps(avisos, ensure_ascii=False) if avisos else None, chave)
+            (
+                centavos(tot_efetivo),
+                centavos(desc) or 0,
+                centavos(pago_efetivo),
+                completo,
+                json.dumps(avisos, ensure_ascii=False) if avisos else None,
+                chave,
+            ),
         )
 
     return True

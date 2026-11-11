@@ -4,6 +4,7 @@ O erro caro aqui não é deixar passar dado ruim uma vez — é recusar dado bom
 sempre, porque aí a funcionalidade some sem ninguém entender. Por isso o
 primeiro teste é o falso positivo.
 """
+
 import json
 from pathlib import Path
 
@@ -27,7 +28,7 @@ def test_resposta_degradada_e_recusada():
     """A mesma consulta, respondida com base de teste."""
     v = avaliar(DEGRADADO, gtin="7891167011779")
     assert not v.confiavel
-    assert len(v.motivos) >= 3          # vários sinais independentes, não um só
+    assert len(v.motivos) >= 3  # vários sinais independentes, não um só
 
 
 @pytest.mark.parametrize("pedaco", ["ncm", "fora do PR", "uma descrição só"])
@@ -47,11 +48,17 @@ def test_buscar_pelo_nome_exato_do_produto_nao_e_eco():
     chamados exatamente assim — porque é o nome deles. A regra do eco não
     distinguia isso de fraude, e por isso saiu de `avaliar`.
     """
-    resposta = {"produtos": [
-        {"desc": "ATUM GOM COSTA RALADO NAT 170G", "ncm": "16042010",
-         "gtin": "7891167011779",
-         "estabelecimento": {"uf": "PR", "nm_emp": f"MERCADO {k}", "mun": "MEDIANEIRA"}}
-        for k in range(4)]}
+    resposta = {
+        "produtos": [
+            {
+                "desc": "ATUM GOM COSTA RALADO NAT 170G",
+                "ncm": "16042010",
+                "gtin": "7891167011779",
+                "estabelecimento": {"uf": "PR", "nm_emp": f"MERCADO {k}", "mun": "MEDIANEIRA"},
+            }
+            for k in range(4)
+        ]
+    }
     assert avaliar(resposta).confiavel
 
 
@@ -61,18 +68,33 @@ def test_canario_sadio_devolve_zero():
 
 
 def test_canario_reprova_o_eco():
-    eco = {"produtos": [
-        {"desc": "ZZQQXX FOOBAR 999G", "ncm": "04011010", "gtin": "",
-         "estabelecimento": {"uf": "PR", "nm_emp": f"LOJA {k}"}} for k in range(6)]}
+    eco = {
+        "produtos": [
+            {
+                "desc": "ZZQQXX FOOBAR 999G",
+                "ncm": "04011010",
+                "gtin": "",
+                "estabelecimento": {"uf": "PR", "nm_emp": f"LOJA {k}"},
+            }
+            for k in range(6)
+        ]
+    }
     v = canario_passou(eco, "ZZQQXX FOOBAR 999G")
     assert not v and "eco literal" in v.motivos[0]
 
 
 def test_canario_reprova_qualquer_resultado():
     """Termo que não existe não pode devolver produto nenhum, ecoado ou não."""
-    qualquer = {"produtos": [
-        {"desc": "OUTRA COISA", "ncm": "04011010", "gtin": "",
-         "estabelecimento": {"uf": "PR", "nm_emp": "LOJA"}}]}
+    qualquer = {
+        "produtos": [
+            {
+                "desc": "OUTRA COISA",
+                "ncm": "04011010",
+                "gtin": "",
+                "estabelecimento": {"uf": "PR", "nm_emp": "LOJA"},
+            }
+        ]
+    }
     assert not canario_passou(qualquer, "ZZQQXX FOOBAR 999G")
 
 
@@ -91,28 +113,43 @@ def test_ncm_de_9_digitos_derruba():
 
 
 def test_gtin_diferente_do_consultado_derruba():
-    resposta = {"produtos": [
-        {"desc": "OUTRA COISA", "ncm": "04011010", "gtin": "7891000100103",
-         "estabelecimento": {"uf": "PR", "nm_emp": "LOJA"}}]}
+    resposta = {
+        "produtos": [
+            {
+                "desc": "OUTRA COISA",
+                "ncm": "04011010",
+                "gtin": "7891000100103",
+                "estabelecimento": {"uf": "PR", "nm_emp": "LOJA"},
+            }
+        ]
+    }
     v = avaliar(resposta, gtin="7891167011779")
     assert not v.confiavel and "diferente do consultado" in " ".join(v.motivos)
 
 
 # ── dígito verificador GS1 ───────────────────────────────────────────────────
-@pytest.mark.parametrize("gtin", [
-    "7891167011779",    # atum Gomes da Costa, do cupom real
-    "7891000100103",    # leite Moça
-    "07891167011779",   # com o zero à esquerda que a API devolve
-])
+@pytest.mark.parametrize(
+    "gtin",
+    [
+        "7891167011779",  # atum Gomes da Costa, do cupom real
+        "7891000100103",  # leite Moça
+        "07891167011779",  # com o zero à esquerda que a API devolve
+    ],
+)
 def test_gtin_valido(gtin):
     assert digito_gtin_confere(gtin)
 
 
-@pytest.mark.parametrize("gtin", [
-    "7891167011778",    # último dígito trocado
-    "789116701177",     # tamanho que não existe
-    "", "abc", "320078169",
-])
+@pytest.mark.parametrize(
+    "gtin",
+    [
+        "7891167011778",  # último dígito trocado
+        "789116701177",  # tamanho que não existe
+        "",
+        "abc",
+        "320078169",
+    ],
+)
 def test_gtin_invalido(gtin):
     assert not digito_gtin_confere(gtin)
 

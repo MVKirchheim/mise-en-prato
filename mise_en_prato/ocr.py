@@ -7,6 +7,7 @@ comércios locais) ou cupons térmicos cujo QR Code ficou ilegível.
 Todo o processamento roda 100% no servidor local (casa-srv), sem enviar
 imagens nem texto para nenhuma API externa ou nuvem.
 """
+
 import hashlib
 import logging
 import re
@@ -81,9 +82,7 @@ def extrair_linhas_estruturadas(imagem: Image.Image) -> list[dict]:
     Devolve lista de dicionários ordenados do topo ao fim do documento:
     [{ 'texto': '001 PAO FRANCES KG 0,500 X 16,00 8,00', 'top': 104, 'altura': 20 }, ...]
     """
-    dados = pytesseract.image_to_data(
-        imagem, lang="por", config="--psm 6", output_type=Output.DICT
-    )
+    dados = pytesseract.image_to_data(imagem, lang="por", config="--psm 6", output_type=Output.DICT)
 
     palavras = []
     n = len(dados.get("text", []))
@@ -91,13 +90,15 @@ def extrair_linhas_estruturadas(imagem: Image.Image) -> list[dict]:
         txt = dados["text"][i].strip()
         conf = int(dados["conf"][i]) if dados["conf"][i] != "-1" else 0
         if txt and conf > 25:
-            palavras.append({
-                "texto": txt,
-                "left": dados["left"][i],
-                "top": dados["top"][i],
-                "width": dados["width"][i],
-                "height": dados["height"][i],
-            })
+            palavras.append(
+                {
+                    "texto": txt,
+                    "left": dados["left"][i],
+                    "top": dados["top"][i],
+                    "width": dados["width"][i],
+                    "height": dados["height"][i],
+                }
+            )
 
     if not palavras:
         return []
@@ -134,11 +135,13 @@ def extrair_linhas_estruturadas(imagem: Image.Image) -> list[dict]:
     for lin in linhas:
         lin.sort(key=lambda p: p["left"])
         texto_linha = " ".join(p["texto"] for p in lin)
-        resultado.append({
-            "texto": texto_linha,
-            "top": lin[0]["top"],
-            "altura": max(p["height"] for p in lin),
-        })
+        resultado.append(
+            {
+                "texto": texto_linha,
+                "top": lin[0]["top"],
+                "altura": max(p["height"] for p in lin),
+            }
+        )
 
     return resultado
 

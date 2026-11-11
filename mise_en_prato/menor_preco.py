@@ -22,6 +22,7 @@ Medido em 19/08/2026: com o User-Agent padrão do Python a API devolve uma base
 de teste com HTTP 200. Com o cliente identificado, dado limpo. Não era bloqueio
 de IP — o navegador da mesma casa recebia dado bom o tempo todo.
 """
+
 import json
 import logging
 import sqlite3
@@ -44,7 +45,7 @@ UA = f"mise_en_prato/{VERSAO} (uso pessoal, consulta sob demanda; casa-srv)"
 # degradada devolve dezenas de "produtos" com esse nome exato.
 CANARIO = "ZZQQXX FOOBAR 999G"
 
-ESPERA_ENTRE_CONSULTAS = 2.0    # segundos
+ESPERA_ENTRE_CONSULTAS = 2.0  # segundos
 
 
 class TetoAtingido(Exception):
@@ -69,8 +70,7 @@ class RespostaSuspeita(Exception):
 def _buscar_http(parametros: dict, tempo_limite: int = 45) -> dict:
     """A única função que fala com a rede. Injetável nos testes."""
     url = API + "?" + urllib.parse.urlencode(parametros)
-    pedido = urllib.request.Request(
-        url, headers={"User-Agent": UA, "Accept": "application/json"})
+    pedido = urllib.request.Request(url, headers={"User-Agent": UA, "Accept": "application/json"})
     with urllib.request.urlopen(pedido, timeout=tempo_limite) as resposta:
         return json.load(resposta)
 
@@ -92,7 +92,7 @@ class MenorPreco:
         linha = self.con.execute(
             "SELECT feita_em FROM consulta_menor_preco"
             " WHERE feita_em > ? ORDER BY feita_em LIMIT 1",
-            ((datetime.now() - timedelta(hours=1)).isoformat(sep=" ", timespec="seconds"),)
+            ((datetime.now() - timedelta(hours=1)).isoformat(sep=" ", timespec="seconds"),),
         ).fetchone()
         if not linha:
             return None
@@ -109,9 +109,13 @@ class MenorPreco:
             self.con.execute(
                 "INSERT INTO consulta_menor_preco (feita_em, alvo, confiavel, motivos)"
                 " VALUES (?,?,?,?)",
-                (datetime.now().isoformat(sep=" ", timespec="seconds"), alvo,
-                 1 if veredito.confiavel else 0,
-                 "; ".join(veredito.motivos) or None))
+                (
+                    datetime.now().isoformat(sep=" ", timespec="seconds"),
+                    alvo,
+                    1 if veredito.confiavel else 0,
+                    "; ".join(veredito.motivos) or None,
+                ),
+            )
 
     # ── a consulta ───────────────────────────────────────────────────────────
     def buscar(self, *, termo: str = "", gtin: str = "") -> list[dict]:
@@ -122,10 +126,16 @@ class MenorPreco:
                 f"{self.cfg.teto_consultas_hora} consultas na última hora — "
                 "o teto existe para esta app não virar o robô que o termo proíbe"
                 + (f". Libera às {libera:%H:%M}." if libera else ""),
-                libera_em=libera)
+                libera_em=libera,
+            )
 
-        parametros = {"local": self.cfg.local, "raio": self.cfg.raio_km,
-                      "data": self.cfg.dias_janela, "offset": 0, "ordem": 0}
+        parametros = {
+            "local": self.cfg.local,
+            "raio": self.cfg.raio_km,
+            "data": self.cfg.dias_janela,
+            "offset": 0,
+            "ordem": 0,
+        }
         parametros["gtin" if gtin else "termo"] = gtin or termo
 
         # espaça as consultas mesmo quando quem chama não espaçou
@@ -179,7 +189,8 @@ def _cnpj_da_loja(con: sqlite3.Connection, nome: str, municipio: str) -> str | N
     """
     achado = con.execute(
         "SELECT cnpj FROM estabelecimento WHERE upper(razao) = ? AND upper(municipio) = ?",
-        ((nome or "").upper(), (municipio or "").upper())).fetchone()
+        ((nome or "").upper(), (municipio or "").upper()),
+    ).fetchone()
     return achado["cnpj"] if achado else None
 
 
@@ -193,15 +204,25 @@ def guardar(con: sqlite3.Connection, produto_id: int, produtos: list[dict]) -> i
             if cnpj:
                 con.execute(
                     "UPDATE estabelecimento SET codigo_menor_preco = ?"
-                    " WHERE cnpj = ? AND codigo_menor_preco IS NULL", (e.get("codigo"), cnpj))
+                    " WHERE cnpj = ? AND codigo_menor_preco IS NULL",
+                    (e.get("codigo"), cnpj),
+                )
             cursor = con.execute(
                 """INSERT OR IGNORE INTO preco
                        (produto_id, cnpj, unitario_centavos, observado_em, fonte,
                         loja, municipio, codigo_menor_preco, distancia_km)
                    VALUES (?,?,?,?, 'menor_preco', ?,?,?,?)""",
-                (produto_id, cnpj, centavos(p["valor"]), (p.get("datahora") or "")[:19],
-                 e.get("nm_emp"), e.get("mun"), e.get("codigo"),
-                 float(p["distkm"]) if p.get("distkm") else None))
+                (
+                    produto_id,
+                    cnpj,
+                    centavos(p["valor"]),
+                    (p.get("datahora") or "")[:19],
+                    e.get("nm_emp"),
+                    e.get("mun"),
+                    e.get("codigo"),
+                    float(p["distkm"]) if p.get("distkm") else None,
+                ),
+            )
             novas += cursor.rowcount
     return novas
 
@@ -239,13 +260,15 @@ def _main(argumentos: list[str]) -> int:
 
     for p in achados[:20]:
         e = p["estabelecimento"]
-        print(f"  R$ {p['valor']:>8}  {p['distkm']:>7} km  {p['desc'][:36]:<38}"
-              f" {e['nm_emp'][:32]}")
-    print(f"\n  {len(achados)} resultados · consultas na última hora: "
-          f"{cliente.consultas_na_ultima_hora()}")
+        print(f"  R$ {p['valor']:>8}  {p['distkm']:>7} km  {p['desc'][:36]:<38} {e['nm_emp'][:32]}")
+    print(
+        f"\n  {len(achados)} resultados · consultas na última hora: "
+        f"{cliente.consultas_na_ultima_hora()}"
+    )
     return 0
 
 
 if __name__ == "__main__":
     import sys
+
     raise SystemExit(_main(sys.argv[1:]))

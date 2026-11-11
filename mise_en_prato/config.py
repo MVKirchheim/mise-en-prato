@@ -5,6 +5,7 @@ Mesmo hábito do resto da casa: `.env` fora do git, `.env.exemplo` versionado
 explicando cada variável. Todos os padrões apontam para os caminhos de dentro
 do contêiner, e todos podem ser sobrescritos para rodar na mão no host.
 """
+
 from functools import lru_cache
 from pathlib import Path
 

@@ -20,6 +20,7 @@ agendamento: um cupom por vez, quando alguém pede — a mesma disciplina que o
 cliente do Menor Preço segue por causa do termo de uso da CELEPAR. O que muda é
 só a tela em que a pessoa digita as letras.
 """
+
 import logging
 import secrets
 from dataclasses import dataclass, field
@@ -69,10 +70,10 @@ class Desafio:
     """Um captcha aberto, esperando as letras. Vive em memória, nunca em disco."""
 
     id: str
-    url: str                       # onde o POST vai
-    campos: dict[str, str]         # os ocultos do Drupal, repetidos de volta
+    url: str  # onde o POST vai
+    campos: dict[str, str]  # os ocultos do Drupal, repetidos de volta
     cookies: dict[str, str]
-    imagem: bytes                  # os bytes da imagem do captcha
+    imagem: bytes  # os bytes da imagem do captcha
     # MEDIDO: o portal serve JPEG, apesar do nome "image-captcha-generate". O
     # tipo vem do cabeçalho e não de palpite — data URI com tipo errado é o
     # tipo de coisa que funciona em um navegador e falha em outro.
@@ -94,8 +95,11 @@ def _cliente(tempo_limite: int, cookies: dict | None = None):
     import httpx
 
     return httpx.Client(
-        timeout=tempo_limite, follow_redirects=True, cookies=cookies or {},
-        headers={"User-Agent": UA, "Accept-Language": "pt-BR"})
+        timeout=tempo_limite,
+        follow_redirects=True,
+        cookies=cookies or {},
+        headers={"User-Agent": UA, "Accept-Language": "pt-BR"},
+    )
 
 
 def abrir_desafio(tempo_limite: int = 30) -> Desafio:
@@ -150,7 +154,8 @@ def consultar(desafio: Desafio, chave: str, captcha: str, tempo_limite: int = 45
         resposta = cliente.post(
             desafio.url,
             data={**desafio.campos, "txChave": chave, "captcha_response": captcha},
-            headers={"Referer": desafio.url})
+            headers={"Referer": desafio.url},
+        )
         resposta.raise_for_status()
         html = resposta.text
 
@@ -163,9 +168,18 @@ def consultar(desafio: Desafio, chave: str, captcha: str, tempo_limite: int = 45
 
 def _diz_que_nao_achou(html: str) -> bool:
     baixo = html.lower()
-    return any(frase in baixo for frase in (
-        "não consta", "nao consta", "não foi localizada", "nao foi localizada",
-        "inexistente", "não encontrada", "nao encontrada"))
+    return any(
+        frase in baixo
+        for frase in (
+            "não consta",
+            "nao consta",
+            "não foi localizada",
+            "nao foi localizada",
+            "inexistente",
+            "não encontrada",
+            "nao encontrada",
+        )
+    )
 
 
 def interpretar_resposta(html: str) -> Cupom:
@@ -180,4 +194,3 @@ def interpretar_resposta(html: str) -> Cupom:
     if not cupom.itens and cupom.total is None:
         raise LayoutDesconhecido("a consulta completa veio num layout que ainda não sei ler")
     return cupom
-

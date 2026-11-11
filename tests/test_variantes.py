@@ -1,4 +1,5 @@
 """Testes de variantes e sabores de produtos multissabor."""
+
 import pytest
 
 from mise_en_prato.banco import conectar
@@ -145,15 +146,23 @@ def test_unificar_preserva_variantes_sem_perda_por_cascade(con):
     con.commit()
 
     # Produto 10 tem Classic e Chocolate
-    salvar_variantes_do_produto(con, 10, [
-        {"gtin": "7896045102556", "nome": "Classic"},
-        {"gtin": "7896045102563", "nome": "Chocolate"},
-    ])
+    salvar_variantes_do_produto(
+        con,
+        10,
+        [
+            {"gtin": "7896045102556", "nome": "Classic"},
+            {"gtin": "7896045102563", "nome": "Chocolate"},
+        ],
+    )
     # Produto 20 tem Chocolate e Caramelo
-    salvar_variantes_do_produto(con, 20, [
-        {"gtin": "7896045102563", "nome": "Chocolate"},
-        {"gtin": "7896045102716", "nome": "Caramelo"},
-    ])
+    salvar_variantes_do_produto(
+        con,
+        20,
+        [
+            {"gtin": "7896045102563", "nome": "Chocolate"},
+            {"gtin": "7896045102716", "nome": "Caramelo"},
+        ],
+    )
 
     # Unifica 20 em 10
     resultado = unificar(con, manter=10, juntar=20)
@@ -176,15 +185,23 @@ def test_candidatos_unificacao_por_variantes_compartilhadas(con):
 
     # As descrições têm L vs LA, que parecidos() recusa.
     # O produto 30 tem Classic (padrão) e Chocolate (variante).
-    salvar_variantes_do_produto(con, 30, [
-        {"gtin": "7896045102556", "nome": "Classic", "eh_padrao": True},
-        {"gtin": "7896045102563", "nome": "Chocolate", "eh_padrao": False},
-    ])
+    salvar_variantes_do_produto(
+        con,
+        30,
+        [
+            {"gtin": "7896045102556", "nome": "Classic", "eh_padrao": True},
+            {"gtin": "7896045102563", "nome": "Chocolate", "eh_padrao": False},
+        ],
+    )
     # O produto 40 tem Caramelo (padrão) e Chocolate (variante).
-    salvar_variantes_do_produto(con, 40, [
-        {"gtin": "7896045102716", "nome": "Caramelo", "eh_padrao": True},
-        {"gtin": "7896045102563", "nome": "Chocolate", "eh_padrao": False},
-    ])
+    salvar_variantes_do_produto(
+        con,
+        40,
+        [
+            {"gtin": "7896045102716", "nome": "Caramelo", "eh_padrao": True},
+            {"gtin": "7896045102563", "nome": "Chocolate", "eh_padrao": False},
+        ],
+    )
 
     cand = candidatos(con)
     assert len(cand) >= 1

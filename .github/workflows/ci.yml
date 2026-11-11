@@ -23,6 +23,8 @@ jobs:
 
       - run: ruff check .
 
+      - run: ruff format --check .
+
       - run: pytest -q
 
       # O drill.sh do casa-srv varre o índice DELE e não enxerga esta pasta,
