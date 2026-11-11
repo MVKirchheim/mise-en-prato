@@ -252,7 +252,11 @@
     if (itens.length) {
       listaEl.innerHTML = itens
         .map((ing) => {
-          const qtdFormatada = ing.quantidade_formatada || ing.quantidade || '';
+          // Mesma escala do Modo Cozinha: é ela que vai para a nota da lista.
+          const qtdNum = Number(ing.quantidade) || 0;
+          const qtdFormatada = escalaCozinha !== 1 && qtdNum > 0
+            ? formatarFracao(qtdNum * escalaCozinha)
+            : (ing.quantidade_formatada || ing.quantidade || '');
           const unidTexto = ing.unidade && ing.unidade !== 'unidade' ? ing.unidade : '';
           const detalhe = [qtdFormatada, unidTexto].filter(Boolean).join(' ');
           return `
@@ -299,6 +303,9 @@
       lista_id: listaIdVal ? Number(listaIdVal) : null,
       nome_nova_lista: !listaIdVal ? `Receita: ${receitaAtiva.nome}` : null,
       ingrediente_ids: selecionados,
+      // Escala do Modo Cozinha como TEXTO ("0.5"): o servidor faz a conta em
+      // Decimal. escalaCozinha só recebe os literais dos botões (½x a 4x).
+      fator: String(escalaCozinha),
     };
 
     try {
@@ -309,7 +316,8 @@
       });
 
       fecharModalEnviarLista();
-      if (confirm(`✅ ${res.adicionados} ingredientes adicionados à lista de compras!\nDeseja ir para a aba Lista agora?`)) {
+      const jaNaLista = res.ja_na_lista ? `\n${res.ja_na_lista} já estavam na lista (quantidade mantida, nota atualizada).` : '';
+      if (confirm(`✅ ${res.adicionados} ingredientes adicionados à lista de compras!${jaNaLista}\nDeseja ir para a aba Lista agora?`)) {
         fecharModoCozinha();
         if (typeof mudarAba === 'function') {
           mudarAba('lista');

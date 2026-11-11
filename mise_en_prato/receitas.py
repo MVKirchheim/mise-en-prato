@@ -15,6 +15,7 @@ import io
 import re
 import sqlite3
 from collections import defaultdict
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import Decimal
@@ -938,6 +939,20 @@ def calcular_fator_rendimento(
     return fator.normalize()
 
 
+def escalar_quantidade(quantidade: Decimal, fator: Decimal) -> Decimal:
+    """Multiplica a quantidade pelo fator e arredonda ao centésimo, sem float.
+
+    Inteiro sai sem casas (Decimal("500")), fração sai enxuta (Decimal("1.5")):
+    é o que o banco consegue guardar (centavos) e o que a tela formata.
+    """
+    if isinstance(quantidade, float) or isinstance(fator, float):
+        raise TypeError("Valores float não são permitidos; use Decimal ou int para precisão.")
+    nova = (Decimal(quantidade) * Decimal(fator)).quantize(Decimal("0.01"))
+    if nova == nova.to_integral():
+        return Decimal(int(nova))
+    return nova.normalize()
+
+
 def escalar_receita(receita: Receita, novas_porcoes: int) -> Receita:
     """Escala as quantidades dos ingredientes para novas porções usando Decimal puro.
 
@@ -955,18 +970,12 @@ def escalar_receita(receita: Receita, novas_porcoes: int) -> Receita:
     novos_ingredientes = []
 
     for ing in receita.ingredientes:
-        nova_qtd = (ing.quantidade * fator).quantize(Decimal("0.01"))
-        if nova_qtd == nova_qtd.to_integral():
-            nova_qtd_final = Decimal(int(nova_qtd))
-        else:
-            nova_qtd_final = nova_qtd.normalize()
-
         novos_ingredientes.append(
             Ingrediente(
                 id=ing.id,
                 receita_id=ing.receita_id,
                 nome_ingrediente=ing.nome_ingrediente,
-                quantidade=nova_qtd_final,
+                quantidade=escalar_quantidade(ing.quantidade, fator),
                 unidade=ing.unidade,
                 gtin_associado=ing.gtin_associado,
             )
@@ -983,3 +992,44 @@ def escalar_receita(receita: Receita, novas_porcoes: int) -> Receita:
         foto_caminho=receita.foto_caminho,
         ingredientes=novos_ingredientes,
     )
+
+
+# ── o que as receitas pedem, em texto para a lista de compras ────────────────
+def _chave_unidade(unidade: str) -> str:
+    return unidade.strip().casefold()
+
+
+def somar_por_unidade(partes: Iterable[tuple[Decimal, str]]) -> list[tuple[Decimal, str]]:
+    """Soma as quantidades que estão na MESMA unidade, sem converter nenhuma.
+
+    "g" e "kg" ficam separados de propósito: converter exigiria uma tabela de
+    unidades que o livro de receitas não tem ("xícara" de quê?). A unidade é
+    comparada sem espaços nas pontas e sem diferença de maiúscula; a grafia que
+    fica é a primeira vista, e a ordem é a de chegada.
+    """
+    somas: dict[str, list] = {}
+    for quantidade, unidade in partes:
+        if isinstance(quantidade, float):
+            raise TypeError("Valores float não são permitidos; use Decimal ou int para precisão.")
+        chave = _chave_unidade(unidade)
+        if chave in somas:
+            somas[chave][0] += Decimal(quantidade)
+        else:
+            somas[chave] = [Decimal(quantidade), unidade.strip()]
+    return [(quantidade, unidade) for quantidade, unidade in somas.values()]
+
+
+def formatar_nota(partes: Iterable[tuple[Decimal, str]], nomes_receitas: Iterable[str]) -> str:
+    """Texto do que as receitas pedem: "500 g + 2 xícaras (Lasanha, Bolo)".
+
+    Os números saem como na tela da receita (formatar_fracao_culinaria). Os
+    nomes de receita aparecem uma vez cada, na ordem recebida.
+    """
+    texto = " + ".join(
+        f"{formatar_fracao_culinaria(quantidade)} {unidade}".strip()
+        for quantidade, unidade in somar_por_unidade(partes)
+    )
+    nomes = list(dict.fromkeys(n.strip() for n in nomes_receitas if n and n.strip()))
+    if nomes:
+        texto = f"{texto} ({', '.join(nomes)})" if texto else f"({', '.join(nomes)})"
+    return texto

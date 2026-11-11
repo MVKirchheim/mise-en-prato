@@ -2079,8 +2079,8 @@ carregadores.lista = async () => {
     $('#lista-cabeca').innerHTML = `
       <div class="linha" style="align-items:center;flex-wrap:wrap;gap:.5rem">
         <select id="qual-lista" style="flex:1;min-width:140px" onchange="listaAtual=Number(this.value);carregadores.lista()">
-          ${listas.map((l) => `<option value="${l.id}" ${l.id === listaAtual ? 'selected' : ''}>
-            ${l.nome} (${l.itens})</option>`).join('')}
+          ${listas.map((l) => `<option value="${Number(l.id)}" ${l.id === listaAtual ? 'selected' : ''}>
+            ${escapar(l.nome)} (${Number(l.itens)})</option>`).join('')}
         </select>
         <button class="acao" onclick="novaLista()">nova</button>
         <button type="button" id="btn-modo-mercado" class="btn-modo-mercado" onclick="alternarModoMercado()">
@@ -2090,8 +2090,8 @@ carregadores.lista = async () => {
     await desenharLista();
   }
   $('#lista-sugestoes').innerHTML = sugestoes.map((s) => `
-    <div class="linha clicavel" onclick="porNaLista(${s.produto_id})">
-      <div>${s.descricao}
+    <div class="linha clicavel" onclick="porNaLista(${Number(s.produto_id)})">
+      <div>${escapar(s.descricao)}
         <div class="fraca">
           ${s.is_granel ? '<span class="selo">⚖️ Granel</span> · ' : ''}
           ${s.compras} ${s.compras > 1 ? 'compras' : 'compra'} · último ${dinheiro(s.ultimo)}
@@ -2168,7 +2168,8 @@ async function desenharLista() {
           <div class="cartao-mercado" onclick="toggleItemCarrinho(${i.produto_id})" role="checkbox" aria-checked="false">
             <div class="check-circulo" aria-hidden="true"></div>
             <div class="cartao-mercado-corpo">
-              <div class="cartao-mercado-nome">${i.descricao}</div>
+              <div class="cartao-mercado-nome">${escapar(i.descricao)}</div>
+              ${i.nota ? `<div class="item-lista-nota">${escapar(i.nota)}</div>` : ''}
               <div class="cartao-mercado-meta">
                 <span class="chip-mercado-qtd">${quantia(i.quantidade)}${granel ? ' kg' : ' un'}</span>
                 ${granel ? '<span class="selo">⚖️ Granel</span> ' : ''}
@@ -2192,7 +2193,8 @@ async function desenharLista() {
           <div class="cartao-mercado marcado" onclick="toggleItemCarrinho(${i.produto_id})" role="checkbox" aria-checked="true">
             <div class="check-circulo checado" aria-hidden="true">✓</div>
             <div class="cartao-mercado-corpo">
-              <div class="cartao-mercado-nome">${i.descricao}</div>
+              <div class="cartao-mercado-nome">${escapar(i.descricao)}</div>
+              ${i.nota ? `<div class="item-lista-nota">${escapar(i.nota)}</div>` : ''}
               <div class="cartao-mercado-meta">
                 <span class="chip-mercado-qtd">${quantia(i.quantidade)}${granel ? ' kg' : ' un'}</span>
                 ${granel ? '<span class="selo">⚖️ Granel</span> ' : ''}
@@ -2222,7 +2224,8 @@ async function desenharLista() {
           return `
           <div class="item-lista-linha" id="item-lista-${i.produto_id}">
             <div class="item-lista-info">
-              <div><strong>${i.descricao}</strong></div>
+              <div><strong>${escapar(i.descricao)}</strong></div>
+              ${i.nota ? `<div class="item-lista-nota">${escapar(i.nota)}</div>` : ''}
               <div class="fraca">
                 ${granel ? '<span class="selo">⚖️ Granel</span> ' : ''}
                 ${i.gtin ? '<span class="selo">código de barras</span> ' : ''}
@@ -2331,7 +2334,7 @@ window.abrirAjusteQtd = (produto_id) => {
   modal.innerHTML = `
     <div class="modal-gaveta" onclick="event.stopPropagation()">
       <div class="linha">
-        <strong>${item.descricao}</strong>
+        <strong>${escapar(item.descricao)}</strong>
         <span class="clicavel fraca" onclick="document.getElementById('modal-ajuste-qtd').remove()">✕</span>
       </div>
       <div class="fraca" style="margin-top:.2rem">Ajustar quantidade ${granel ? '(em kg)' : '(unidades)'}</div>
@@ -2339,7 +2342,7 @@ window.abrirAjusteQtd = (produto_id) => {
         ${presets.map((p) => `<button type="button" class="btn-preset" onclick="definirQtdDireta(${produto_id}, ${p})">${quantia(p)}${granel ? ' kg' : ''}</button>`).join('')}
       </div>
       <form id="form-ajuste-qtd" onsubmit="event.preventDefault(); salvarInputQtd(${produto_id});" style="display:flex;gap:.5rem;margin-top:.6rem">
-        <input type="number" id="input-qtd-modal" step="${granel ? '0.001' : '1'}" min="0.001" value="${item.quantidade}" required autofocus style="flex:1">
+        <input type="number" id="input-qtd-modal" step="${granel ? '0.001' : '1'}" min="0.001" value="${escapar(item.quantidade)}" required autofocus style="flex:1">
         <button type="submit" class="acao">Salvar</button>
       </form>
     </div>`;
@@ -2378,7 +2381,7 @@ window.salvarInputQtd = async (produto_id) => {
 function desenharComparacao(c) {
   if (!c || !c.lojas.length) {
     $('#lista-comparacao').innerHTML = c && c.sem_preco && c.sem_preco.length
-      ? `<div class="estado">Ainda não há preço para: ${c.sem_preco.join(', ')}.</div>` : '';
+      ? `<div class="estado">Ainda não há preço para: ${c.sem_preco.map(escapar).join(', ')}.</div>` : '';
     return;
   }
   $('#lista-comparacao').innerHTML = `
@@ -2386,17 +2389,17 @@ function desenharComparacao(c) {
     <div class="lista">${c.lojas.map((l, k) => `
       <div>
         <div class="linha">
-          <div><strong>${k === 0 && l.completa ? '★ ' : ''}${l.loja}</strong>
-            <div class="fraca">${l.distancia_km != null ? `${l.distancia_km} km · ` : ''}
-              ${l.cobertura} de ${l.de} itens
-              ${l.mais_antigo ? `· desde ${dia(l.mais_antigo)}` : ''}
-              ${l.completa ? '' : `· falta ${l.falta.join(', ')}`}</div></div>
+          <div><strong>${k === 0 && l.completa ? '★ ' : ''}${escapar(l.loja)}</strong>
+            <div class="fraca">${l.distancia_km != null ? `${escapar(l.distancia_km)} km · ` : ''}
+              ${Number(l.cobertura)} de ${Number(l.de)} itens
+              ${l.mais_antigo ? `· desde ${escapar(dia(l.mais_antigo))}` : ''}
+              ${l.completa ? '' : `· falta ${l.falta.map(escapar).join(', ')}`}</div></div>
           <strong class="num">${dinheiro(l.total)}</strong>
         </div>
       </div>`).join('')}</div>
     ${c.sem_preco.length ? `<div class="estado" style="margin-top:.7rem">
-      Sem preço em lugar nenhum: ${c.sem_preco.join(', ')}.</div>` : ''}
-    <p class="dica">Preços dos últimos ${c.janela_dias} dias, do que a casa pagou
+      Sem preço em lugar nenhum: ${c.sem_preco.map(escapar).join(', ')}.</div>` : ''}
+    <p class="dica">Preços dos últimos ${Number(c.janela_dias)} dias, do que a casa pagou
       e do que a região praticou.</p>`;
 }
 

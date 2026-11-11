@@ -20,6 +20,8 @@ from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from typing import Any
 
+from . import receitas
+
 REFEICOES = ("almoco", "jantar")
 
 _FORMATO_DATA = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -336,3 +338,107 @@ def excluir_entrada(con: sqlite3.Connection, entrada_id: int) -> None:
         cur = con.execute("DELETE FROM cardapio_entrada WHERE id = ?", (entrada_id,))
     if cur.rowcount == 0:
         raise EntradaNaoEncontrada(f"Entrada {entrada_id} não encontrada no cardápio.")
+
+
+# ── lista de compras da semana ───────────────────────────────────────────────
+_MESES_CURTOS = ("jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez")
+
+
+def _nome_normalizado(nome: str) -> str:
+    """Nome sem espaços sobrando e sem caixa: "  Farinha  de Trigo" = "farinha de trigo"."""
+    return " ".join(nome.split()).casefold()
+
+
+def nome_padrao_lista(inicio: date, fim: date) -> str:
+    """Nome da lista nova: "Cardápio 9 – 15 nov", ou "Cardápio 30 nov – 6 dez".
+
+    O mesmo formato curto do título da semana na tela.
+    """
+    if inicio.month == fim.month:
+        return f"Cardápio {inicio.day} – {fim.day} {_MESES_CURTOS[fim.month - 1]}"
+    return (
+        f"Cardápio {inicio.day} {_MESES_CURTOS[inicio.month - 1]}"
+        f" – {fim.day} {_MESES_CURTOS[fim.month - 1]}"
+    )
+
+
+def lista_da_semana(con: sqlite3.Connection, dia: date) -> dict:
+    """O que comprar para as receitas planejadas na semana de `dia`.
+
+    Entram só entradas com receita e ainda não feitas: texto livre não tem
+    ingrediente, e o que já foi cozinhado não precisa mais ser comprado. Cada
+    receita é escalada para as porções da entrada. Os ingredientes se agrupam
+    pelo código de barras quando têm, senão pelo nome normalizado; dentro do
+    grupo, quantidades na mesma unidade são somadas (sem converter unidades).
+
+    Devolve {"inicio", "fim", "entradas", "ignoradas", "grupos": [...]}, onde
+    `ignoradas` conta entradas cuja receita não existe mais e cada grupo é
+    {"chave", "nome", "gtin", "partes": [{"quantidade", "unidade"}],
+    "receitas", "nota"}.
+    """
+    segunda, domingo = semana_de(dia)
+    linhas = con.execute(
+        """
+        SELECT receita_id, porcoes
+          FROM cardapio_entrada
+         WHERE data BETWEEN ? AND ?
+           AND receita_id IS NOT NULL
+           AND feito_em IS NULL
+         ORDER BY data, refeicao, ordem, id
+        """,
+        (segunda.isoformat(), domingo.isoformat()),
+    ).fetchall()
+
+    grupos: dict[str, dict] = {}
+    entradas = ignoradas = 0
+    livro: dict[int, receitas.Receita | None] = {}
+    for linha in linhas:
+        receita_id = linha["receita_id"]
+        if receita_id not in livro:
+            livro[receita_id] = receitas.obter_receita(con, receita_id)
+        receita = livro[receita_id]
+        if receita is None:
+            ignoradas += 1
+            continue
+        entradas += 1
+        porcoes = linha["porcoes"]
+        if porcoes and porcoes != receita.porcoes:
+            receita = receitas.escalar_receita(receita, porcoes)
+        for ing in receita.ingredientes:
+            gtin = (ing.gtin_associado or "").strip() or None
+            chave = f"gtin:{gtin}" if gtin else f"nome:{_nome_normalizado(ing.nome_ingrediente)}"
+            grupo = grupos.setdefault(
+                chave,
+                {
+                    "chave": chave,
+                    "nome": ing.nome_ingrediente,
+                    "gtin": gtin,
+                    "partes": [],
+                    "receitas": set(),
+                },
+            )
+            grupo["partes"].append((ing.quantidade, ing.unidade))
+            grupo["receitas"].add(receita.nome)
+
+    resultado = []
+    for grupo in grupos.values():
+        partes = receitas.somar_por_unidade(grupo["partes"])
+        nomes = sorted(grupo["receitas"], key=str.casefold)
+        resultado.append(
+            {
+                "chave": grupo["chave"],
+                "nome": grupo["nome"],
+                "gtin": grupo["gtin"],
+                "partes": [{"quantidade": q, "unidade": u} for q, u in partes],
+                "receitas": nomes,
+                "nota": receitas.formatar_nota(partes, nomes),
+            }
+        )
+    resultado.sort(key=lambda g: (g["nome"].casefold(), g["chave"]))
+    return {
+        "inicio": segunda.isoformat(),
+        "fim": domingo.isoformat(),
+        "entradas": entradas,
+        "ignoradas": ignoradas,
+        "grupos": resultado,
+    }
