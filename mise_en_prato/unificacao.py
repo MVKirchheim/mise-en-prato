@@ -15,6 +15,7 @@ Aqui há duas metades, e a separação é proposital:
   candidato mais óbvio: quem decide que dois nomes são a mesma coisa é quem
   compra.
 """
+
 import logging
 import re
 import sqlite3
@@ -100,8 +101,7 @@ def _info_produto_comparativo(
     sabores_set = set()
     try:
         sql_var = (
-            "SELECT DISTINCT sabor FROM produto_variante "
-            "WHERE produto_id = ? AND sabor IS NOT NULL"
+            "SELECT DISTINCT sabor FROM produto_variante WHERE produto_id = ? AND sabor IS NOT NULL"
         )
         for r in con.execute(sql_var, (produto_id,)):
             if r["sabor"]:
@@ -134,13 +134,17 @@ def _info_produto_comparativo(
 
 def candidatos(con: sqlite3.Connection) -> list[dict]:
     """Pares que valem uma olhada humana, do mais forte para o mais fraco."""
-    produtos = list(con.execute("""
+    produtos = list(
+        con.execute("""
         SELECT p.id, p.descricao_canonica AS desc, p.gtin,
                COUNT(i.id) AS linhas, SUM(i.total_centavos) AS gasto
           FROM produto p LEFT JOIN item i ON i.produto_id = p.id
-         GROUP BY p.id"""))
-    recusados = {(r["desc_a"], r["desc_b"])
-                 for r in con.execute("SELECT desc_a, desc_b FROM unificacao_recusada")}
+         GROUP BY p.id""")
+    )
+    recusados = {
+        (r["desc_a"], r["desc_b"])
+        for r in con.execute("SELECT desc_a, desc_b FROM unificacao_recusada")
+    }
 
     variantes_por_produto: dict[int, set[str]] = {}
     try:
@@ -161,7 +165,7 @@ def candidatos(con: sqlite3.Connection) -> list[dict]:
 
     achados = []
     for k, a in enumerate(produtos):
-        for b in produtos[k + 1:]:
+        for b in produtos[k + 1 :]:
             if tuple(sorted((a["desc"], b["desc"]))) in recusados:
                 continue
 
@@ -183,12 +187,15 @@ def candidatos(con: sqlite3.Connection) -> list[dict]:
                 if not motivo:
                     continue
                 forca = 1
-            achados.append({
-                "forca": forca, "motivo": motivo,
-                # o que tem mais histórico fica, para mexer em menos linhas
-                "manter": get_info(a),
-                "juntar": get_info(b),
-            })
+            achados.append(
+                {
+                    "forca": forca,
+                    "motivo": motivo,
+                    # o que tem mais histórico fica, para mexer em menos linhas
+                    "manter": get_info(a),
+                    "juntar": get_info(b),
+                }
+            )
     for c in achados:
         if c["juntar"]["linhas"] > c["manter"]["linhas"]:
             c["manter"], c["juntar"] = c["juntar"], c["manter"]
@@ -223,13 +230,14 @@ def unificar(con: sqlite3.Connection, manter: int, juntar: int) -> dict:
         # OR IGNORE nos que têm índice único: a mesma observação de preço pode
         # já existir dos dois lados, e aí a cópia sobrando é descartada.
         con.execute("UPDATE item SET produto_id = ? WHERE produto_id = ?", (manter, juntar))
-        con.execute("UPDATE OR IGNORE preco SET produto_id = ? WHERE produto_id = ?",
-                    (manter, juntar))
+        con.execute(
+            "UPDATE OR IGNORE preco SET produto_id = ? WHERE produto_id = ?", (manter, juntar)
+        )
         con.execute("DELETE FROM preco WHERE produto_id = ?", (juntar,))
-        con.execute("UPDATE apelido_loja SET produto_id = ? WHERE produto_id = ?",
-                    (manter, juntar))
-        con.execute("UPDATE OR IGNORE lista_item SET produto_id = ? WHERE produto_id = ?",
-                    (manter, juntar))
+        con.execute("UPDATE apelido_loja SET produto_id = ? WHERE produto_id = ?", (manter, juntar))
+        con.execute(
+            "UPDATE OR IGNORE lista_item SET produto_id = ? WHERE produto_id = ?", (manter, juntar)
+        )
         con.execute("DELETE FROM lista_item WHERE produto_id = ?", (juntar,))
 
         # Apaga PRIMEIRO e herda depois: enquanto os dois existem, copiar o
@@ -237,12 +245,21 @@ def unificar(con: sqlite3.Connection, manter: int, juntar: int) -> dict:
         # mesmo gtin no mesmo instante.
         con.execute("DELETE FROM produto WHERE id = ?", (juntar,))
         campos_heranca = (
-            "gtin", "ncm", "categoria", "apelido", "marca", "nutriscore", "nova_group", "foto_url"
+            "gtin",
+            "ncm",
+            "categoria",
+            "apelido",
+            "marca",
+            "nutriscore",
+            "nova_group",
+            "foto_url",
         )
         for campo in campos_heranca:
             if campo in alvo.keys() and not alvo[campo] and outro[campo]:
-                con.execute(f"UPDATE produto SET {campo} = ? WHERE id = ?",  # noqa: S608
-                            (outro[campo], manter))
+                con.execute(
+                    f"UPDATE produto SET {campo} = ? WHERE id = ?",  # noqa: S608
+                    (outro[campo], manter),
+                )
 
         # Se manter não tinha GTIN mas agora tem variantes, define o padrão
         try:
@@ -255,13 +272,14 @@ def unificar(con: sqlite3.Connection, manter: int, juntar: int) -> dict:
                 (manter,),
             ).fetchone()
             if var_padrao:
-                con.execute("UPDATE produto SET gtin = COALESCE(gtin, ?) WHERE id = ?",
-                            (var_padrao["gtin"], manter))
+                con.execute(
+                    "UPDATE produto SET gtin = COALESCE(gtin, ?) WHERE id = ?",
+                    (var_padrao["gtin"], manter),
+                )
         except sqlite3.OperationalError:
             pass
 
-    log.info("unificado: %r absorveu %r", alvo["descricao_canonica"],
-             outro["descricao_canonica"])
+    log.info("unificado: %r absorveu %r", alvo["descricao_canonica"], outro["descricao_canonica"])
     return {"manter": manter, "absorvido": outro["descricao_canonica"]}
 
 
@@ -269,8 +287,9 @@ def recusar(con: sqlite3.Connection, desc_a: str, desc_b: str) -> None:
     """Marca um par como "não são a mesma coisa", para não sugerir de novo."""
     a, b = sorted((desc_a, desc_b))
     with con:
-        con.execute("INSERT OR IGNORE INTO unificacao_recusada (desc_a, desc_b) VALUES (?, ?)",
-                    (a, b))
+        con.execute(
+            "INSERT OR IGNORE INTO unificacao_recusada (desc_a, desc_b) VALUES (?, ?)", (a, b)
+        )
 
 
 def unificar_como_linha(
@@ -417,9 +436,7 @@ def unificar_como_linha(
         con.execute("DELETE FROM produto WHERE id = ?", (variante_id,))
 
         # Herança de atributos se o mestre não tiver
-        campos_heranca = (
-            "categoria", "marca", "nutriscore", "nova_group", "foto_url"
-        )
+        campos_heranca = ("categoria", "marca", "nutriscore", "nova_group", "foto_url")
         for campo in campos_heranca:
             if campo in alvo.keys() and not alvo[campo] and outro[campo]:
                 con.execute(

@@ -5,6 +5,7 @@ Mapeia bases abertas (Open Food Facts Brasil, CMED/ANVISA) num SQLite separado
 (dados/catalogo.db). Opera de forma totalmente desacoplada do banco transacional
 (dados/mise_en_prato.db), garantindo zero contenção de locks e respostas em <1ms.
 """
+
 import csv
 import gzip
 import json
@@ -217,10 +218,7 @@ def parse_openfoodfacts_dict(raw: dict) -> dict | None:
         return None
 
     nome = (
-        raw.get("product_name_pt")
-        or raw.get("product_name")
-        or raw.get("product_name_en")
-        or ""
+        raw.get("product_name_pt") or raw.get("product_name") or raw.get("product_name_en") or ""
     ).strip()
     if not nome:
         return None
@@ -228,11 +226,7 @@ def parse_openfoodfacts_dict(raw: dict) -> dict | None:
     marca = (raw.get("brands") or "").strip() or None
     categoria = (raw.get("categories") or "").strip() or None
 
-    sabor_raw = (
-        raw.get("flavor")
-        or raw.get("flavour")
-        or ""
-    ).strip()
+    sabor_raw = (raw.get("flavor") or raw.get("flavour") or "").strip()
     if sabor_raw:
         sabor = sabor_raw
     else:
@@ -250,10 +244,7 @@ def parse_openfoodfacts_dict(raw: dict) -> dict | None:
         nova_group = None
 
     foto_url = (
-        raw.get("image_url")
-        or raw.get("image_front_url")
-        or raw.get("image_small_url")
-        or None
+        raw.get("image_url") or raw.get("image_front_url") or raw.get("image_small_url") or None
     )
 
     return {
@@ -294,9 +285,7 @@ def parse_cmed_linha(linha: list[str], colunas: list[str]) -> dict | None:
     subst = linha[idx_subst].strip() if idx_subst is not None and idx_subst < len(linha) else ""
     lab = linha[idx_lab].strip() if idx_lab is not None and idx_lab < len(linha) else None
     classe = (
-        linha[idx_classe].strip()
-        if idx_classe is not None and idx_classe < len(linha)
-        else None
+        linha[idx_classe].strip() if idx_classe is not None and idx_classe < len(linha) else None
     )
 
     partes_nome = [p for p in (nome_prod, apres) if p]
@@ -422,9 +411,7 @@ def estatisticas_catalogo(con: sqlite3.Connection) -> dict:
     total = con.execute("SELECT COUNT(*) FROM catalogo_produto").fetchone()[0]
     origens = {
         r["origem"]: r["qtd"]
-        for r in con.execute(
-            "SELECT origem, COUNT(*) AS qtd FROM catalogo_produto GROUP BY origem"
-        )
+        for r in con.execute("SELECT origem, COUNT(*) AS qtd FROM catalogo_produto GROUP BY origem")
     }
     novas = {
         r["nova_group"]: r["qtd"]
@@ -713,9 +700,7 @@ def salvar_variantes_do_produto(
     return inseridos
 
 
-def definir_variante_padrao(
-    con_principal: sqlite3.Connection, produto_id: int, gtin: str
-) -> bool:
+def definir_variante_padrao(con_principal: sqlite3.Connection, produto_id: int, gtin: str) -> bool:
     """Define uma variante específica como a padrão da linha."""
     cod = normalizar_gtin(gtin)
     var = con_principal.execute(
@@ -756,9 +741,7 @@ def definir_variante_padrao(
     return True
 
 
-def remover_variante(
-    con_principal: sqlite3.Connection, produto_id: int, gtin: str
-) -> bool:
+def remover_variante(con_principal: sqlite3.Connection, produto_id: int, gtin: str) -> bool:
     """Remove uma variante do produto. Se for a padrão, promove outra."""
     cod = normalizar_gtin(gtin)
     with con_principal:
@@ -921,9 +904,7 @@ def main():
         "sincronizar-gtins",
         help="Sincroniza produtos com GTIN do banco principal contra o catálogo/OFF",
     )
-    p_sync.add_argument(
-        "--limite", type=int, default=100, help="Limite de produtos a processar"
-    )
+    p_sync.add_argument("--limite", type=int, default=100, help="Limite de produtos a processar")
 
     sub.add_parser("status", help="Exibe estatísticas do catálogo")
 

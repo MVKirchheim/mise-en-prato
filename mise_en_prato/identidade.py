@@ -10,6 +10,7 @@ O login que volta ("miguelvictor91") vira nome de morador pela env MORADORES.
 Quem não está na lista é visita do nó compartilhado — e visita não registra
 compra da casa.
 """
+
 import ipaddress
 
 import httpx
@@ -51,8 +52,9 @@ async def quem_e(ip: str, porta: int) -> str:
     transporte = httpx.AsyncHTTPTransport(uds=str(cfg.tailscaled_sock))
     async with httpx.AsyncClient(transport=transporte, base_url=f"http://{HOST_LOCALAPI}") as cli:
         try:
-            resposta = await cli.get("/localapi/v0/whois", params={"addr": f"{ip}:{porta}"},
-                                     timeout=5)
+            resposta = await cli.get(
+                "/localapi/v0/whois", params={"addr": f"{ip}:{porta}"}, timeout=5
+            )
             resposta.raise_for_status()
         except httpx.HTTPError as erro:
             raise NaoIdentificado(f"tailscaled não respondeu o whois de {ip}: {erro}") from erro

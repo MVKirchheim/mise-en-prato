@@ -3,6 +3,7 @@
 Nenhum teste aqui toca a rede: o cupom entra pela camada de gravação, e o que
 se exercita são as rotas de leitura, a serialização e o portão de identidade.
 """
+
 from decimal import Decimal
 from pathlib import Path
 
@@ -20,14 +21,17 @@ def _app(tmp_path, monkeypatch, *, exigir_tailnet: bool):
     monkeypatch.setenv("DADOS", str(tmp_path))
     monkeypatch.setenv("EXIGIR_TAILNET", "true" if exigir_tailnet else "false")
     from mise_en_prato.config import config
+
     config.cache_clear()
     from mise_en_prato.main import app
+
     return app
 
 
 @pytest.fixture
 def cliente(tmp_path, monkeypatch):
     from mise_en_prato.config import config
+
     with TestClient(_app(tmp_path, monkeypatch, exigir_tailnet=False)) as c:
         cupom = interpretar(FIXTURE.read_text(encoding="utf-8"))
         gravar(c.app.state.con, cupom, morador="Miguel")
@@ -43,7 +47,7 @@ def test_saude_nao_exige_identidade(cliente):
 
 def test_gastos_do_mes(cliente):
     agosto = cliente.get("/api/gastos?mes=2026-08").json()
-    assert agosto["resumo"]["total"] == "106.74"    # string, não float
+    assert agosto["resumo"]["total"] == "106.74"  # string, não float
     assert agosto["resumo"]["cupons"] == 1
     assert agosto["resumo"]["por_loja"][0]["loja"] == "LAR COOPERATIVA AGROINDUSTRIAL"
     assert agosto["resumo"]["por_morador"][0]["morador"] == "Miguel"
@@ -53,8 +57,8 @@ def test_gastos_do_mes(cliente):
 def test_dinheiro_sai_como_string_e_nao_como_float(cliente):
     """Float no JSON reintroduziria o erro de centavo que o banco evita."""
     bruto = cliente.get("/api/gastos?mes=2026-08").text
-    assert '"total": "106.74"' in bruto      # com aspas: é string
-    assert '"total": 106.74' not in bruto    # sem aspas seria float
+    assert '"total": "106.74"' in bruto  # com aspas: é string
+    assert '"total": 106.74' not in bruto  # sem aspas seria float
 
 
 def test_lista_de_cupons(cliente):
@@ -75,21 +79,24 @@ def test_cupom_por_chave(cliente):
 def test_produtos_e_historico(cliente):
     produtos = cliente.get("/api/produtos").json()["produtos"]
     assert len(produtos) == 14
-    assert all(p["gtin"] is None for p in produtos)   # o cupom não traz GTIN
+    assert all(p["gtin"] is None for p in produtos)  # o cupom não traz GTIN
 
     atum = next(p for p in produtos if p["descricao"].startswith("ATUM"))
     detalhe = cliente.get(f"/api/produto/{atum['id']}").json()
     assert detalhe["menor_pago"] == detalhe["maior_pago"] == "10.97"
-    assert len(detalhe["compras"]) == 2               # comprado duas vezes
-    assert len(detalhe["serie"]) == 1                 # mas uma observação de preço
+    assert len(detalhe["compras"]) == 2  # comprado duas vezes
+    assert len(detalhe["serie"]) == 1  # mas uma observação de preço
 
 
 def test_busca_de_produto(cliente):
     achados = cliente.get("/api/produtos?busca=frimesa").json()["produtos"]
     assert {p["descricao"] for p in achados} == {
-        "IOG FRIMESA PROT BAUNILHA 170G", "IOG FRIMESA PROT BAN ACAI 170G",
-        "IOG FRIMESA PROT MGO 170G", "LEITE FRIMESA ZERO LACTOSE 1LT",
-        "LEITE FRIMESA INT 1LT"}
+        "IOG FRIMESA PROT BAUNILHA 170G",
+        "IOG FRIMESA PROT BAN ACAI 170G",
+        "IOG FRIMESA PROT MGO 170G",
+        "LEITE FRIMESA ZERO LACTOSE 1LT",
+        "LEITE FRIMESA INT 1LT",
+    }
 
 
 def test_reenvio_por_chave_ja_guardada(cliente):
@@ -122,8 +129,9 @@ def test_fora_da_tailnet_leva_403(tmp_path, monkeypatch):
     de alguém batendo na porta por fora da tailnet.
     """
     from mise_en_prato.config import config
+
     with TestClient(_app(tmp_path, monkeypatch, exigir_tailnet=True)) as c:
-        assert c.get("/api/saude").status_code == 200     # a saúde é pública
+        assert c.get("/api/saude").status_code == 200  # a saúde é pública
         assert c.get("/api/gastos").status_code == 403
         assert c.get("/api/cupons").status_code == 403
         assert c.post("/api/cupom", json={"url": "x"}).status_code == 403
@@ -167,8 +175,13 @@ def _com_dv(chave: str) -> str:
 def _desafio_falso():
     from mise_en_prato.consulta_chave import Desafio
 
-    return Desafio(id="desafio-de-teste", url="https://exemplo.invalido/consulta",
-                   campos={}, cookies={}, imagem=b"imagem-de-mentira")
+    return Desafio(
+        id="desafio-de-teste",
+        url="https://exemplo.invalido/consulta",
+        campos={},
+        cookies={},
+        imagem=b"imagem-de-mentira",
+    )
 
 
 @pytest.fixture
@@ -183,6 +196,7 @@ def portal(monkeypatch):
         chamadas.append((chave, captcha))
         if captcha != "certo":
             from mise_en_prato.consulta_chave import CaptchaRecusado
+
             raise CaptchaRecusado("nao")
         return FIXTURE.read_text(encoding="utf-8")
 
@@ -203,38 +217,53 @@ def test_desafio_traz_a_imagem_do_captcha(cliente, portal):
 def test_chave_digitada_traz_o_cupom_inteiro(cliente, portal):
     """O caminho que salva cupom de QR manchado: 44 dígitos + captcha."""
     chave = _com_dv(CHAVE_NOVA)
-    r = cliente.post("/api/cupom/chave", json={
-        "chave": chave, "desafio": _pegar_desafio(cliente), "captcha": "certo"})
+    r = cliente.post(
+        "/api/cupom/chave",
+        json={"chave": chave, "desafio": _pegar_desafio(cliente), "captcha": "certo"},
+    )
     assert r.status_code == 200, r.text
     corpo = r.json()
     assert corpo["novo"] is True
-    assert len(corpo["cupom"]["itens"]) == 16       # a fixture inteira, item a item
+    assert len(corpo["cupom"]["itens"]) == 16  # a fixture inteira, item a item
     assert portal == [(chave, "certo")]
 
 
 def test_chave_aceita_os_espacos_do_papel(cliente, portal):
     """No cupom a chave vem em grupos de quatro. Ninguém vai juntá-los na mão."""
     chave = _com_dv(CHAVE_NOVA)
-    espacada = " ".join(chave[i:i + 4] for i in range(0, 44, 4))
-    r = cliente.post("/api/cupom/chave", json={
-        "chave": espacada, "desafio": _pegar_desafio(cliente), "captcha": "certo"})
+    espacada = " ".join(chave[i : i + 4] for i in range(0, 44, 4))
+    r = cliente.post(
+        "/api/cupom/chave",
+        json={"chave": espacada, "desafio": _pegar_desafio(cliente), "captcha": "certo"},
+    )
     assert r.status_code == 200 and portal == [(chave, "certo")]
 
 
 def test_digito_trocado_nem_chega_no_portal(cliente, portal):
     """Recusar antes de consultar é o que poupa o captcha de quem errou um número."""
-    ruim = _com_dv(CHAVE_NOVA)[:43] + "9" if _com_dv(CHAVE_NOVA)[43] != "9" else \
-        _com_dv(CHAVE_NOVA)[:43] + "8"
-    r = cliente.post("/api/cupom/chave", json={
-        "chave": ruim, "desafio": _pegar_desafio(cliente), "captcha": "certo"})
+    ruim = (
+        _com_dv(CHAVE_NOVA)[:43] + "9"
+        if _com_dv(CHAVE_NOVA)[43] != "9"
+        else _com_dv(CHAVE_NOVA)[:43] + "8"
+    )
+    r = cliente.post(
+        "/api/cupom/chave",
+        json={"chave": ruim, "desafio": _pegar_desafio(cliente), "captcha": "certo"},
+    )
     assert r.status_code == 400
     assert "dígito verificador" in r.json()["detail"]
     assert portal == []
 
 
 def test_captcha_errado_explica_e_nao_grava(cliente, portal):
-    r = cliente.post("/api/cupom/chave", json={
-        "chave": _com_dv(CHAVE_NOVA), "desafio": _pegar_desafio(cliente), "captcha": "errado"})
+    r = cliente.post(
+        "/api/cupom/chave",
+        json={
+            "chave": _com_dv(CHAVE_NOVA),
+            "desafio": _pegar_desafio(cliente),
+            "captcha": "errado",
+        },
+    )
     assert r.status_code == 422 and "captcha" in r.json()["detail"]
     assert cliente.get("/api/cupom/" + _com_dv(CHAVE_NOVA)).status_code == 404
 
@@ -242,22 +271,29 @@ def test_captcha_errado_explica_e_nao_grava(cliente, portal):
 def test_captcha_usado_nao_serve_duas_vezes(cliente, portal):
     """O `sid` já gasto não volta: erro rende desafio novo, nunca o mesmo."""
     desafio = _pegar_desafio(cliente)
-    cliente.post("/api/cupom/chave", json={
-        "chave": _com_dv(CHAVE_NOVA), "desafio": desafio, "captcha": "errado"})
-    r = cliente.post("/api/cupom/chave", json={
-        "chave": _com_dv(CHAVE_NOVA), "desafio": desafio, "captcha": "certo"})
+    cliente.post(
+        "/api/cupom/chave",
+        json={"chave": _com_dv(CHAVE_NOVA), "desafio": desafio, "captcha": "errado"},
+    )
+    r = cliente.post(
+        "/api/cupom/chave",
+        json={"chave": _com_dv(CHAVE_NOVA), "desafio": desafio, "captcha": "certo"},
+    )
     assert r.status_code == 410
 
 
 def test_cupom_ja_guardado_nao_gasta_captcha(cliente, portal):
     """Reenviar chave já guardada não pede nada ao portal — nem captcha, nem consulta."""
     chave = _com_dv(CHAVE_NOVA)
-    cliente.post("/api/cupom/chave", json={
-        "chave": chave, "desafio": _pegar_desafio(cliente), "captcha": "certo"})
+    cliente.post(
+        "/api/cupom/chave",
+        json={"chave": chave, "desafio": _pegar_desafio(cliente), "captcha": "certo"},
+    )
     portal.clear()
 
-    r = cliente.post("/api/cupom/chave", json={
-        "chave": chave, "desafio": "nem-existe", "captcha": "nem-precisa"})
+    r = cliente.post(
+        "/api/cupom/chave", json={"chave": chave, "desafio": "nem-existe", "captcha": "nem-precisa"}
+    )
     assert r.status_code == 200 and r.json()["novo"] is False
     assert portal == []
 
@@ -265,20 +301,23 @@ def test_cupom_ja_guardado_nao_gasta_captcha(cliente, portal):
 # ── a rede de segurança: só a chave e o total ────────────────────────────────
 def test_manual_registra_o_gasto_e_pede_revisao(cliente):
     chave = _com_dv(CHAVE_NOVA)
-    r = cliente.post("/api/cupom/manual", json={
-        "chave": chave, "total": "106,74", "emitido_em": "2026-08-24"})
+    r = cliente.post(
+        "/api/cupom/manual", json={"chave": chave, "total": "106,74", "emitido_em": "2026-08-24"}
+    )
     assert r.status_code == 200, r.text
     cupom = r.json()["cupom"]
-    assert cupom["valor_pago"] == "106.74"          # string, não float
+    assert cupom["valor_pago"] == "106.74"  # string, não float
     assert cupom["itens"] == []
-    assert cupom["avisos"]                          # entra na fila de revisão
+    assert cupom["avisos"]  # entra na fila de revisão
     assert cliente.get("/api/cupons").json()["revisao"]
 
 
 def test_manual_tira_a_loja_da_propria_chave(cliente):
     """O CNPJ mora dentro da chave — a loja não fica anônima nem sem consulta."""
-    r = cliente.post("/api/cupom/manual", json={
-        "chave": _com_dv(CHAVE_NOVA), "total": "10", "emitido_em": "2026-08-24"})
+    r = cliente.post(
+        "/api/cupom/manual",
+        json={"chave": _com_dv(CHAVE_NOVA), "total": "10", "emitido_em": "2026-08-24"},
+    )
     assert r.json()["cupom"]["loja"] == "CNPJ 76.430.438/0112-97"
 
 
@@ -289,21 +328,26 @@ def test_manual_nao_rebatiza_loja_conhecida(cliente):
     cupom digitado renomearia o mercado inteiro para "CNPJ ...".
     """
     chave = _com_dv("41260877752293016191651170009999991010241380")
-    cliente.post("/api/cupom/manual",
-                 json={"chave": chave, "total": "10", "emitido_em": "2026-08-24"})
+    cliente.post(
+        "/api/cupom/manual", json={"chave": chave, "total": "10", "emitido_em": "2026-08-24"}
+    )
     assert cliente.get("/api/cupom/" + chave).json()["loja"] == "LAR COOPERATIVA AGROINDUSTRIAL"
 
 
 def test_manual_recusa_data_de_outro_mes(cliente):
     """Gasto no mês errado é pior que cupom faltando — e a chave sabe o mês."""
-    r = cliente.post("/api/cupom/manual", json={
-        "chave": _com_dv(CHAVE_NOVA), "total": "10", "emitido_em": "2026-07-24"})
+    r = cliente.post(
+        "/api/cupom/manual",
+        json={"chave": _com_dv(CHAVE_NOVA), "total": "10", "emitido_em": "2026-07-24"},
+    )
     assert r.status_code == 400 and "08/2026" in r.json()["detail"]
 
 
 def test_manual_recusa_total_que_nao_e_numero(cliente):
-    r = cliente.post("/api/cupom/manual", json={
-        "chave": _com_dv(CHAVE_NOVA), "total": "", "emitido_em": "2026-08-24"})
+    r = cliente.post(
+        "/api/cupom/manual",
+        json={"chave": _com_dv(CHAVE_NOVA), "total": "", "emitido_em": "2026-08-24"},
+    )
     assert r.status_code == 400
 
 
@@ -361,18 +405,31 @@ def test_revisar_cupom_endpoint(cliente):
     assert any(c["chave"] == quebrado.chave for c in corpo["revisao"])
 
     # Revisa com itens e aprova
-    r = cliente.post(f"/api/cupom/{quebrado.chave}/revisar", json={
-        "itens": [
-            {"descricao": "CAFE EM PO 500G", "quantidade": "1", "unidade": "UN",
-             "valor_unitario": "18.90", "valor_total": "18.90"},
-            {"descricao": "ACUCAR CRISTAL 1KG", "quantidade": "2", "unidade": "UN",
-             "valor_unitario": "4.50", "valor_total": "9.00"},
-        ],
-        "total": "27.90",
-        "desconto": "0.00",
-        "valor_pago": "27.90",
-        "aprovar": True,
-    })
+    r = cliente.post(
+        f"/api/cupom/{quebrado.chave}/revisar",
+        json={
+            "itens": [
+                {
+                    "descricao": "CAFE EM PO 500G",
+                    "quantidade": "1",
+                    "unidade": "UN",
+                    "valor_unitario": "18.90",
+                    "valor_total": "18.90",
+                },
+                {
+                    "descricao": "ACUCAR CRISTAL 1KG",
+                    "quantidade": "2",
+                    "unidade": "UN",
+                    "valor_unitario": "4.50",
+                    "valor_total": "9.00",
+                },
+            ],
+            "total": "27.90",
+            "desconto": "0.00",
+            "valor_pago": "27.90",
+            "aprovar": True,
+        },
+    )
     assert r.status_code == 200, r.text
     dados = r.json()
     assert dados["ok"] is True
@@ -407,16 +464,19 @@ def test_catalogo_status_e_enriquecimento_local(cliente, tmp_path):
 
     caminho_cat = config().banco_catalogo
     cat = conectar_catalogo(caminho_cat, criar=True)
-    inserir_produtos(cat, [
-        {
-            "gtin": "7891167011779",
-            "nome": "ATUM GOM COSTA RALADO NAT 170G",
-            "marca": "GOMES DA COSTA",
-            "nutriscore": "A",
-            "nova_group": 3,
-            "origem": "openfoodfacts",
-        }
-    ])
+    inserir_produtos(
+        cat,
+        [
+            {
+                "gtin": "7891167011779",
+                "nome": "ATUM GOM COSTA RALADO NAT 170G",
+                "marca": "GOMES DA COSTA",
+                "nutriscore": "A",
+                "nova_group": 3,
+                "origem": "openfoodfacts",
+            }
+        ],
+    )
     cat.close()
 
     # Status agora deve reportar disponível
@@ -549,13 +609,17 @@ def test_registrar_atualiza_cupom_incompleto(tmp_path, monkeypatch):
 def test_enviar_chave_reconsultar_atualiza(cliente, portal):
     """Com reconsultar=True, enviar_chave refaz a consulta no portal mesmo já guardado."""
     chave = _com_dv(CHAVE_NOVA)
-    cliente.post("/api/cupom/chave", json={
-        "chave": chave, "desafio": _pegar_desafio(cliente), "captcha": "certo"})
+    cliente.post(
+        "/api/cupom/chave",
+        json={"chave": chave, "desafio": _pegar_desafio(cliente), "captcha": "certo"},
+    )
     portal.clear()
 
     desafio = _pegar_desafio(cliente)
-    r = cliente.post("/api/cupom/chave", json={
-        "chave": chave, "desafio": desafio, "captcha": "certo", "reconsultar": True})
+    r = cliente.post(
+        "/api/cupom/chave",
+        json={"chave": chave, "desafio": desafio, "captcha": "certo", "reconsultar": True},
+    )
     assert r.status_code == 200
     assert portal == [(chave, "certo")]
 
@@ -583,9 +647,9 @@ def test_registrar_higieniza_url_qr_no_banco(tmp_path, monkeypatch):
         url_com_bom = "\ufeff" + url_pura
         r = c.post("/api/cupom", json={"url": url_com_bom})
         assert r.status_code == 200
-        url_no_banco = con.execute(
-            "SELECT url_qr FROM cupom WHERE chave = ?", (chave,)
-        ).fetchone()[0]
+        url_no_banco = con.execute("SELECT url_qr FROM cupom WHERE chave = ?", (chave,)).fetchone()[
+            0
+        ]
         assert url_no_banco == url_pura
         assert not url_no_banco.startswith("\ufeff")
     config.cache_clear()
@@ -620,12 +684,15 @@ def test_api_unificar_como_linha(cliente):
     ).lastrowid
     con.commit()
 
-    r = cliente.post("/api/unificar/como-linha", json={
-        "mestre_id": mestre_id,
-        "variante_id": outro_id,
-        "sabor_mestre": "Original",
-        "sabor_variante": "Uva",
-    })
+    r = cliente.post(
+        "/api/unificar/como-linha",
+        json={
+            "mestre_id": mestre_id,
+            "variante_id": outro_id,
+            "sabor_mestre": "Original",
+            "sabor_variante": "Uva",
+        },
+    )
     assert r.status_code == 200
     corpo = r.json()
     assert corpo["mestre_id"] == mestre_id
@@ -670,9 +737,3 @@ def test_api_atrelar_gtin_invalido_retorna_400(cliente):
         json={"gtin": "12345"},
     )
     assert r.status_code == 400
-
-
-
-
-
-

@@ -4,6 +4,7 @@ Atribuir o GTIN errado não quebra nada visivelmente — só passa a comparar o
 produto errado para sempre. Por isso a maior parte destes testes é sobre
 RECUSAR, e o mais importante é o da ambiguidade.
 """
+
 from pathlib import Path
 
 import pytest
@@ -23,12 +24,17 @@ from mise_en_prato.nfce_pr import interpretar
 FIXTURE = Path(__file__).parent / "fixtures" / "cupom_lar_2026-08-14.html"
 ATUM = "ATUM GOM COSTA RALADO NAT 170G"
 GTIN = "7891167011779"
-OUTRO = "7891167012103"      # o "DEF": mesmo tamanho, mesmo preço, produto diferente
+OUTRO = "7891167012103"  # o "DEF": mesmo tamanho, mesmo preço, produto diferente
 
 
 def resultado(desc, gtin, loja, valor="10.97", ncm="16042010"):
-    return {"desc": desc, "gtin": gtin, "valor": valor, "ncm": ncm,
-            "estabelecimento": {"nm_emp": loja, "mun": "MEDIANEIRA", "uf": "PR"}}
+    return {
+        "desc": desc,
+        "gtin": gtin,
+        "valor": valor,
+        "ncm": ncm,
+        "estabelecimento": {"nm_emp": loja, "mun": "MEDIANEIRA", "uf": "PR"},
+    }
 
 
 @pytest.fixture
@@ -44,8 +50,12 @@ LAR = {"LAR COOPERATIVA AGROINDUSTRIAL"}
 
 # ── a decisão, isolada ───────────────────────────────────────────────────────
 def test_mesma_loja_e_o_degrau_forte():
-    d = escolher_gtin(ATUM, [resultado(ATUM, GTIN, "LAR COOPERATIVA AGROINDUSTRIAL")],
-                      lojas_da_casa=LAR, precos_pagos={"10.97"})
+    d = escolher_gtin(
+        ATUM,
+        [resultado(ATUM, GTIN, "LAR COOPERATIVA AGROINDUSTRIAL")],
+        lojas_da_casa=LAR,
+        precos_pagos={"10.97"},
+    )
     assert d["gtin"] == GTIN and d["confianca"] == "alta"
     assert "mesmo preço" in d["motivo"]
 
@@ -64,16 +74,19 @@ def test_ambiguidade_recusa():
 
 
 def test_ambiguidade_na_propria_loja_recusa():
-    achados = [resultado(ATUM, GTIN, "LAR COOPERATIVA AGROINDUSTRIAL"),
-               resultado(ATUM, OUTRO, "LAR COOPERATIVA AGROINDUSTRIAL")]
+    achados = [
+        resultado(ATUM, GTIN, "LAR COOPERATIVA AGROINDUSTRIAL"),
+        resultado(ATUM, OUTRO, "LAR COOPERATIVA AGROINDUSTRIAL"),
+    ]
     d = escolher_gtin(ATUM, achados, lojas_da_casa=LAR, precos_pagos=set())
     assert d["gtin"] is None and "2 códigos" in d["motivo"]
 
 
 def test_descricao_so_parecida_nao_serve():
-    """"RALADO" e "PEDACOS" custam o mesmo e são produtos diferentes."""
-    achados = [resultado("ATUM GOM COSTA PEDACOS NAT 170G", OUTRO,
-                         "LAR COOPERATIVA AGROINDUSTRIAL")]
+    """ "RALADO" e "PEDACOS" custam o mesmo e são produtos diferentes."""
+    achados = [
+        resultado("ATUM GOM COSTA PEDACOS NAT 170G", OUTRO, "LAR COOPERATIVA AGROINDUSTRIAL")
+    ]
     d = escolher_gtin(ATUM, achados, lojas_da_casa=LAR, precos_pagos={"10.97"})
     assert d["gtin"] is None and "descrição exata" in d["motivo"]
 
@@ -86,8 +99,10 @@ def test_gtin_com_digito_errado_e_ignorado():
 
 def test_a_loja_da_casa_ganha_do_consenso_da_regiao():
     """Se a loja onde a casa comprou diz um código, é ele — mesmo em minoria."""
-    achados = [resultado(ATUM, GTIN, "LAR COOPERATIVA AGROINDUSTRIAL"),
-               *[resultado(ATUM, OUTRO, f"MERCADO {k}") for k in range(5)]]
+    achados = [
+        resultado(ATUM, GTIN, "LAR COOPERATIVA AGROINDUSTRIAL"),
+        *[resultado(ATUM, OUTRO, f"MERCADO {k}") for k in range(5)],
+    ]
     d = escolher_gtin(ATUM, achados, lojas_da_casa=LAR, precos_pagos=set())
     assert d["gtin"] == GTIN and d["confianca"] == "alta"
 
@@ -105,7 +120,8 @@ class ClienteFalso:
 
 def test_enriquecer_grava_gtin_e_ncm(con):
     produto_id = con.execute(
-        "SELECT id FROM produto WHERE descricao_canonica = ?", (ATUM,)).fetchone()[0]
+        "SELECT id FROM produto WHERE descricao_canonica = ?", (ATUM,)
+    ).fetchone()[0]
     cliente = ClienteFalso([resultado(ATUM, GTIN, "LAR COOPERATIVA AGROINDUSTRIAL")])
 
     r = enriquecer(con, cliente, produto_id)
@@ -127,7 +143,8 @@ def test_produto_que_ja_tem_gtin_nao_gasta_consulta(con):
 
 def test_recusa_nao_grava_nada(con):
     produto_id = con.execute(
-        "SELECT id FROM produto WHERE descricao_canonica = ?", (ATUM,)).fetchone()[0]
+        "SELECT id FROM produto WHERE descricao_canonica = ?", (ATUM,)
+    ).fetchone()[0]
     cliente = ClienteFalso([resultado(ATUM, GTIN, "A"), resultado(ATUM, OUTRO, "B")])
     r = enriquecer(con, cliente, produto_id)
     assert r["novo"] is False
@@ -143,8 +160,13 @@ def test_pendentes_prioriza_o_que_a_casa_mais_compra(con):
 def test_enriquecer_dois_produtos_no_mesmo_gtin_vira_candidato_a_unificacao(con):
     """O ciclo se fecha: código igual é prova de que são o mesmo item."""
     from mise_en_prato.unificacao import candidatos
-    a, b = (r[0] for r in con.execute(
-        "SELECT id FROM produto WHERE descricao_canonica LIKE 'IOG%' ORDER BY id LIMIT 2"))
+
+    a, b = (
+        r[0]
+        for r in con.execute(
+            "SELECT id FROM produto WHERE descricao_canonica LIKE 'IOG%' ORDER BY id LIMIT 2"
+        )
+    )
     con.execute("UPDATE produto SET gtin = ? WHERE id IN (?,?)", (GTIN, a, b))
     con.commit()
     assert any(c["motivo"] == "mesmo código de barras" for c in candidatos(con))
@@ -153,10 +175,11 @@ def test_enriquecer_dois_produtos_no_mesmo_gtin_vira_candidato_a_unificacao(con)
 def test_quem_ja_foi_perguntado_vai_para_o_fim_da_fila(con):
     """Produto industrial que falhou vai para o fim da fila para não queimar cota."""
     alvo = con.execute(
-        "SELECT id FROM produto WHERE descricao_canonica LIKE 'CHOC HERSHEYS%'").fetchone()[0]
+        "SELECT id FROM produto WHERE descricao_canonica LIKE 'CHOC HERSHEYS%'"
+    ).fetchone()[0]
     assert pendentes(con)[0]["produto_id"] != alvo or True
 
-    enriquecer(con, ClienteFalso([]), alvo)                    # tentativa sem sucesso
+    enriquecer(con, ClienteFalso([]), alvo)  # tentativa sem sucesso
     fila = pendentes(con)
     assert fila[-1]["produto_id"] == alvo
     assert fila[-1]["ja_perguntado"] is True
@@ -206,11 +229,14 @@ def test_enriquecer_produto_a_granel_nao_gasta_consulta(con):
 
 def test_tentativa_e_marcada_mesmo_dando_certo(con):
     produto_id = con.execute(
-        "SELECT id FROM produto WHERE descricao_canonica = ?", (ATUM,)).fetchone()[0]
-    enriquecer(con, ClienteFalso([resultado(ATUM, GTIN, "LAR COOPERATIVA AGROINDUSTRIAL")]),
-               produto_id)
+        "SELECT id FROM produto WHERE descricao_canonica = ?", (ATUM,)
+    ).fetchone()[0]
+    enriquecer(
+        con, ClienteFalso([resultado(ATUM, GTIN, "LAR COOPERATIVA AGROINDUSTRIAL")]), produto_id
+    )
     marcado = con.execute(
-        "SELECT gtin_buscado_em FROM produto WHERE id = ?", (produto_id,)).fetchone()[0]
+        "SELECT gtin_buscado_em FROM produto WHERE id = ?", (produto_id,)
+    ).fetchone()[0]
     assert marcado
 
 
@@ -308,9 +334,9 @@ def test_enriquecer_degrau_2_puxa_nutricao_do_catalogo_apos_menor_preco(con, cat
     )
     con.commit()
 
-    cliente = ClienteFalso([
-        resultado("ATUM GOM COSTA 170G", GTIN, "LAR COOPERATIVA AGROINDUSTRIAL")
-    ])
+    cliente = ClienteFalso(
+        [resultado("ATUM GOM COSTA 170G", GTIN, "LAR COOPERATIVA AGROINDUSTRIAL")]
+    )
     r = enriquecer(con, cliente, produto_id, con_catalogo=cat_con)
 
     assert r["novo"] is True
@@ -329,4 +355,3 @@ def test_enriquecer_pendentes_local_em_lote(con, cat_con):
     relatorio = enriquecer_pendentes_local(con, con_catalogo=cat_con)
     assert len(relatorio["identificados"]) >= 1
     assert any(i["gtin"] == GTIN for i in relatorio["identificados"])
-

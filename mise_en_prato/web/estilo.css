@@ -133,10 +133,13 @@ h2 {
   color: var(--fraca);
   font: inherit;
   cursor: pointer;
-  padding: .35rem .6rem;
+  /* Cinco abas e o FAB dividem a largura por igual: com largura mínima fixa, a
+     quinta aba (Cardápio) estourava a dock em celular de 360px. */
+  flex: 1 1 0;
+  min-width: 0;
+  padding: .35rem .2rem;
   border-radius: 16px;
   transition: transform .15s ease, color .15s ease;
-  min-width: 3.8rem;
 }
 .dock-item:active {
   transform: scale(0.92);
@@ -150,6 +153,7 @@ h2 {
   font-size: .72rem;
   font-weight: 500;
   letter-spacing: .01em;
+  white-space: nowrap;
 }
 .dock-item.ativa {
   color: var(--terracota);
@@ -1516,3 +1520,326 @@ svg.grafico-historico {
     gap: 1.5rem;
   }
 }
+
+/* Dock em celular estreito (360px): cinco abas + FAB sem quebrar nem rolar.
+   Fica no fim do arquivo para vencer as regras-base da dock lá em cima. */
+@media (max-width: 400px) {
+  .dock-flutuante { padding: .4rem .4rem; }
+  .dock-item { padding: .3rem .05rem; }
+  .dock-rotulo { font-size: .66rem; letter-spacing: 0; }
+  .dock-fab-container { margin: 0; }
+}
+
+/* ── cardápio semanal ─────────────────────────────────────────────────────── */
+.cardapio-topo {
+  display: flex;
+  align-items: center;
+  gap: .4rem;
+  margin-bottom: .9rem;
+}
+.cardapio-intervalo {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  text-align: center;
+  font-size: 1.1rem;
+  /* Uma linha só; se um dia não couber, corta com reticências em vez de
+     empurrar os botões para fora da linha. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cardapio-intervalo:focus { outline: none; }
+.cardapio-nav {
+  width: 2.4rem;
+  height: 2.4rem;
+  flex-shrink: 0;
+  border: 1px solid var(--borda);
+  border-radius: 12px;
+  background: var(--painel);
+  color: var(--tinta);
+  font: inherit;
+  font-size: 1.35rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.cardapio-nav:hover { background: var(--realce); }
+.cardapio-btn-hoje { flex-shrink: 0; padding: .5rem .8rem; }
+.cardapio-guia { margin: 0 0 .8rem; text-align: center; }
+
+.cardapio-dias {
+  display: flex;
+  flex-direction: column;
+  gap: .75rem;
+}
+.cardapio-dia { padding: .75rem .9rem; scroll-margin: 5rem 0 7rem; }
+.cardapio-dia.hoje {
+  border-color: var(--terracota);
+  box-shadow: 0 0 0 1px var(--terracota), var(--sombra-card);
+}
+.cardapio-dia-cabeca {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .5rem;
+  margin-bottom: .35rem;
+}
+.cardapio-dia-nome {
+  margin: 0;
+  font-family: var(--fonte-display);
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+.cardapio-dia-nome .fraca { font-family: var(--fonte-corpo); font-weight: 500; margin-left: .2rem; }
+.cardapio-selo-hoje {
+  background: var(--terracota);
+  color: #fff;
+  font-weight: 600;
+}
+
+.cardapio-casa { padding: .4rem 0; }
+.cardapio-casa + .cardapio-casa { border-top: 1px solid var(--borda); }
+.cardapio-casa-cabeca {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .5rem;
+}
+.cardapio-casa-rotulo {
+  font-size: .74rem;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--fraca);
+}
+.cardapio-casa-vazia { font-size: .8rem; padding: .1rem 0 .15rem; }
+.cardapio-adicionar {
+  width: 2rem;
+  height: 2rem;
+  flex-shrink: 0;
+  border: 1px dashed var(--borda);
+  border-radius: 10px;
+  background: var(--fundo);
+  color: var(--terracota);
+  font: inherit;
+  font-size: 1.15rem;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+}
+.cardapio-adicionar:hover { border-color: var(--terracota); background: var(--realce); }
+
+.cardapio-entradas {
+  list-style: none;
+  margin: .3rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: .3rem;
+}
+.cardapio-entrada {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  min-width: 0;
+}
+/* Caixa desenhada com as variáveis do tema, como o .check-circulo da lista:
+   a nativa aparece branca e berrante sobre o cartão escuro. */
+.cardapio-check {
+  -webkit-appearance: none;
+  appearance: none;
+  position: relative;
+  width: 1.5rem;
+  height: 1.5rem;
+  flex-shrink: 0;
+  margin: 0;
+  border: 2px solid var(--fraca);
+  border-radius: 7px;
+  background: var(--painel);
+  cursor: pointer;
+  transition: background .15s ease, border-color .15s ease;
+}
+.cardapio-check:hover { border-color: var(--terracota); }
+.cardapio-check:checked {
+  background: var(--terracota);
+  border-color: var(--terracota);
+}
+.cardapio-check:checked::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 45%;
+  width: .32rem;
+  height: .65rem;
+  border: solid var(--painel);
+  border-width: 0 2.5px 2.5px 0;
+  transform: translate(-50%, -50%) rotate(45deg);
+}
+.cardapio-check:focus-visible {
+  outline: 2px solid var(--tinta);
+  outline-offset: 2px;
+}
+.cardapio-entrada-abrir {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: .55rem;
+  padding: .3rem .4rem;
+  border: 0;
+  border-radius: 10px;
+  background: none;
+  color: var(--tinta);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.cardapio-entrada-abrir:hover { background: var(--realce); }
+.cardapio-miniatura {
+  width: 2.2rem;
+  height: 2.2rem;
+  flex-shrink: 0;
+  border-radius: 8px;
+  object-fit: cover;
+  background: var(--realce);
+}
+.cardapio-entrada-texto {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.cardapio-entrada-titulo {
+  overflow-wrap: anywhere;
+  font-size: .95rem;
+}
+.cardapio-entrada-porcoes { font-size: .76rem; color: var(--fraca); }
+/* Feita: título na cor fraca e riscado, miniatura e porções apagadas. A caixa
+   e o lápis ficam intactos; o título não leva opacidade, para continuar legível. */
+.cardapio-entrada.feita .cardapio-entrada-abrir { color: var(--fraca); }
+.cardapio-entrada.feita .cardapio-entrada-titulo {
+  color: var(--fraca);
+  text-decoration: line-through;
+  text-decoration-color: var(--fraca);
+  text-decoration-thickness: 1.5px;
+}
+.cardapio-entrada.feita .cardapio-entrada-porcoes { opacity: .6; }
+.cardapio-entrada.feita .cardapio-miniatura {
+  opacity: .45;
+  filter: grayscale(.7);
+}
+.cardapio-entrada-editar {
+  flex-shrink: 0;
+  width: 2rem;
+  height: 2rem;
+  border: 0;
+  border-radius: 10px;
+  background: none;
+  color: var(--fraca);
+  font: inherit;
+  font-size: 1rem;
+  cursor: pointer;
+}
+.cardapio-entrada-editar:hover { background: var(--realce); color: var(--tinta); }
+
+/* painel inferior do cardápio */
+.sheet-cardapio {
+  max-height: 88vh;
+  overflow-y: auto;
+}
+.sheet-cardapio .sheet-cabecalho { align-items: flex-start; }
+.cardapio-resultados {
+  display: flex;
+  flex-direction: column;
+  gap: .3rem;
+  margin: .5rem 0 1rem;
+  max-height: 14rem;
+  overflow-y: auto;
+}
+.cardapio-resultado {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: .6rem;
+  padding: .55rem .75rem;
+  border: 1px solid var(--borda);
+  border-radius: 12px;
+  background: var(--fundo);
+  color: var(--tinta);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.cardapio-resultado:hover { border-color: var(--terracota); background: var(--realce); }
+.cardapio-resultado-nome { overflow-wrap: anywhere; }
+.cardapio-escolhida {
+  margin: .2rem 0 1rem;
+  padding: .8rem .9rem;
+  border: 1px solid var(--borda);
+  border-radius: 14px;
+  background: var(--fundo);
+  display: flex;
+  flex-direction: column;
+  gap: .7rem;
+}
+.cardapio-porcoes-linha {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .6rem;
+  margin: .7rem 0;
+}
+.cardapio-escolhida .cardapio-porcoes-linha { margin: 0; }
+.cardapio-stepper {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--borda);
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--painel);
+}
+.cardapio-stepper-btn {
+  width: 2.4rem;
+  height: 2.4rem;
+  border: 0;
+  background: var(--realce);
+  color: var(--tinta);
+  font: inherit;
+  font-size: 1.2rem;
+  cursor: pointer;
+}
+.cardapio-stepper input {
+  width: 3.4rem;
+  height: 2.4rem;
+  border: 0;
+  background: var(--painel);
+  color: var(--tinta);
+  font: inherit;
+  text-align: center;
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+.cardapio-stepper input::-webkit-outer-spin-button,
+.cardapio-stepper input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.cardapio-form-texto { border-top: 1px solid var(--borda); padding-top: .9rem; }
+.cardapio-mover {
+  display: flex;
+  gap: .5rem;
+  margin-bottom: .7rem;
+}
+.cardapio-select {
+  width: 100%;
+  padding: .6rem .7rem;
+  border: 1px solid var(--borda);
+  border-radius: 10px;
+  background: var(--painel);
+  color: var(--tinta);
+  font: inherit;
+}
+.cardapio-edit-acoes {
+  display: flex;
+  justify-content: space-between;
+  gap: .6rem;
+  margin-top: 1rem;
+}
+.cardapio-btn-remover { color: var(--alerta); }
+.cardapio-btn-remover:hover { border-color: var(--alerta); }

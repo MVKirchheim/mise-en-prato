@@ -7,6 +7,7 @@ Verifica:
 4. Regra dos centavos: fecha a conta -> completo = 1; diverge -> completo = 0 na fila de revisão.
 5. Integração com banco de dados e fila de revisão.
 """
+
 from decimal import Decimal
 from io import BytesIO
 
@@ -191,6 +192,7 @@ def test_api_upload_foto_aciona_ocr_quando_nao_ha_qr(tmp_path, monkeypatch):
     monkeypatch.setenv("DADOS", str(tmp_path))
     monkeypatch.setenv("EXIGIR_TAILNET", "false")
     from mise_en_prato.config import config
+
     config.cache_clear()
     from fastapi.testclient import TestClient
 
@@ -220,4 +222,3 @@ def test_api_upload_foto_aciona_ocr_quando_nao_ha_qr(tmp_path, monkeypatch):
         assert corpo["cupom"]["itens"][0]["descricao"] == "BROA DE MILHO"
         assert corpo["cupom"]["valor_pago"] == "7.00"
     config.cache_clear()
-

@@ -1,4 +1,5 @@
 """Gravação do cupom no banco: idempotência, itens e série de preço."""
+
 from decimal import Decimal
 from pathlib import Path
 
@@ -38,10 +39,10 @@ def test_grava_e_relê(con, cupom):
 
 def test_reenviar_o_mesmo_cupom_nao_duplica(con, cupom):
     assert gravar(con, cupom, morador="Miguel") is True
-    assert gravar(con, cupom, morador="Ana") is False        # 2ª vez: nada muda
+    assert gravar(con, cupom, morador="Ana") is False  # 2ª vez: nada muda
     assert con.execute("SELECT COUNT(*) FROM cupom").fetchone()[0] == 1
     assert con.execute("SELECT COUNT(*) FROM item").fetchone()[0] == 16
-    assert ler(con, cupom.chave)["morador"] == "Miguel"      # quem chegou primeiro
+    assert ler(con, cupom.chave)["morador"] == "Miguel"  # quem chegou primeiro
 
 
 def test_quantidade_fracionaria_sobrevive_ao_banco(con, cupom):
@@ -54,8 +55,9 @@ def test_quantidade_fracionaria_sobrevive_ao_banco(con, cupom):
 def test_soma_dos_itens_no_banco_fecha_com_o_pago(con, cupom):
     """A aritmética tem de sobreviver à ida e volta em centavos."""
     gravar(con, cupom, morador="Miguel")
-    somado = con.execute("SELECT SUM(total_centavos) FROM item WHERE chave = ?",
-                         (cupom.chave,)).fetchone()[0]
+    somado = con.execute(
+        "SELECT SUM(total_centavos) FROM item WHERE chave = ?", (cupom.chave,)
+    ).fetchone()[0]
     guardado = ler(con, cupom.chave)
     assert Decimal(somado) / 100 - guardado["desconto"] == guardado["valor_pago"]
 
@@ -68,10 +70,12 @@ def test_linhas_repetidas_viram_uma_observacao_de_preco(con, cupom):
     """
     gravar(con, cupom, morador="Miguel")
     atum = con.execute(
-        "SELECT produto_id FROM item WHERE descricao LIKE 'ATUM%' ORDER BY seq").fetchall()
+        "SELECT produto_id FROM item WHERE descricao LIKE 'ATUM%' ORDER BY seq"
+    ).fetchall()
     assert len(atum) == 2 and atum[0]["produto_id"] == atum[1]["produto_id"]
-    precos = con.execute("SELECT COUNT(*) FROM preco WHERE produto_id = ?",
-                         (atum[0]["produto_id"],)).fetchone()[0]
+    precos = con.execute(
+        "SELECT COUNT(*) FROM preco WHERE produto_id = ?", (atum[0]["produto_id"],)
+    ).fetchone()[0]
     assert precos == 1
 
 
@@ -85,7 +89,7 @@ def test_produto_e_apelido_de_loja_sao_criados(con, cupom):
         "SELECT produto_id FROM apelido_loja WHERE descricao_norm = ?",
         ("ATUM GOM COSTA RALADO NAT 170G",),
     ).fetchone()
-    assert apelido is not None       # o "NAT." do cupom virou "NAT" normalizado
+    assert apelido is not None  # o "NAT." do cupom virou "NAT" normalizado
 
 
 def test_produto_repetido_longe_no_cupom_e_o_mesmo(con, cupom):
@@ -100,7 +104,7 @@ def test_produto_repetido_longe_no_cupom_e_o_mesmo(con, cupom):
 
 def test_cupom_incompleto_vai_para_a_fila(con):
     quebrado = interpretar("<html><body>indisponível</body></html>")
-    quebrado.chave = "9" * 44                       # só para ter chave primária
+    quebrado.chave = "9" * 44  # só para ter chave primária
     quebrado.estabelecimento.cnpj = "0" * 14
     quebrado.estabelecimento.razao = "DESCONHECIDA"
     gravar(con, quebrado, morador="Miguel")
@@ -118,15 +122,31 @@ def test_revisar_cupom_incompleto_e_aprovar(con):
     assert len(fila_de_revisao(con)) == 1
 
     novos_itens = [
-        {"descricao": "PAO DE FORMA", "quantidade": Decimal("1.000"), "unidade": "UN",
-         "valor_unitario": Decimal("8.50"), "valor_total": Decimal("8.50")},
-        {"descricao": "MANTEIGA 200G", "quantidade": Decimal("1.000"), "unidade": "UN",
-         "valor_unitario": Decimal("11.50"), "valor_total": Decimal("11.50")},
+        {
+            "descricao": "PAO DE FORMA",
+            "quantidade": Decimal("1.000"),
+            "unidade": "UN",
+            "valor_unitario": Decimal("8.50"),
+            "valor_total": Decimal("8.50"),
+        },
+        {
+            "descricao": "MANTEIGA 200G",
+            "quantidade": Decimal("1.000"),
+            "unidade": "UN",
+            "valor_unitario": Decimal("11.50"),
+            "valor_total": Decimal("11.50"),
+        },
     ]
 
     # 1. Se salvar sem aprovar e com matemática batendo -> fecha
-    ok = revisar(con, quebrado.chave, novos_itens, total=Decimal("20.00"),
-                 valor_pago=Decimal("20.00"), aprovar=True)
+    ok = revisar(
+        con,
+        quebrado.chave,
+        novos_itens,
+        total=Decimal("20.00"),
+        valor_pago=Decimal("20.00"),
+        aprovar=True,
+    )
     assert ok is True
 
     # Saiu da fila de revisão!
@@ -157,13 +177,13 @@ def test_backup_e_poda(con, cupom, tmp_path):
 
     alvo = fazer_backup(con, pasta)
     assert alvo is not None and alvo.exists()
-    assert fazer_backup(con, pasta) is None          # já tem o de hoje
+    assert fazer_backup(con, pasta) is None  # já tem o de hoje
 
     copia = sqlite3.connect(alvo)
     assert copia.execute("SELECT COUNT(*) FROM item").fetchone()[0] == 16
     copia.close()
 
-    for dia in range(1, 11):                          # dez cópias falsas, antigas
+    for dia in range(1, 11):  # dez cópias falsas, antigas
         (pasta / f"cupomzinho_2026-01-{dia:02d}.db").write_bytes(b"")
     fazer_backup(con, pasta, guardar=7)
     assert len(list(pasta.glob("cupomzinho_*.db"))) == 7
@@ -181,8 +201,8 @@ def test_relatorio_conta_quantidade_e_nao_linha_de_cupom(con, cupom):
 
     gravar(con, cupom, morador="Miguel")
     atum = next(p for p in produtos(con) if p["descricao"].startswith("ATUM"))
-    assert atum["quantidade"] == Decimal("2.000")   # duas latas
-    assert atum["compras"] == 1                     # numa ida só
+    assert atum["quantidade"] == Decimal("2.000")  # duas latas
+    assert atum["compras"] == 1  # numa ida só
     assert atum["unidade"] == "PT"
 
     maiores = resumo_do_mes(con, "2026-08")["maiores"]
@@ -201,7 +221,7 @@ def test_quantidade_some_quando_as_unidades_divergem(con, cupom):
     con.commit()
     atum = next(p for p in produtos(con) if p["descricao"].startswith("ATUM"))
     assert atum["quantidade"] is None and atum["unidade"] is None
-    assert atum["compras"] == 1        # o número de compras continua honesto
+    assert atum["compras"] == 1  # o número de compras continua honesto
 
 
 def test_gravar_completa_cupom_incompleto(con, cupom):
@@ -271,14 +291,20 @@ def test_gravar_cupom_sem_cnpj_nao_grava_preco(con):
     cupom = Cupom(
         chave="41260877752293016191651170001637541131086428",
         estabelecimento=Estabelecimento(cnpj="", razao="Sem CNPJ"),
-        itens=[Item(seq=1, descricao="ITEM TESTE", codigo_loja="123",
-                    quantidade=Decimal("1"), unidade="UN",
-                    valor_unitario=Decimal("10.00"), valor_total=Decimal("10.00"))],
+        itens=[
+            Item(
+                seq=1,
+                descricao="ITEM TESTE",
+                codigo_loja="123",
+                quantidade=Decimal("1"),
+                unidade="UN",
+                valor_unitario=Decimal("10.00"),
+                valor_total=Decimal("10.00"),
+            )
+        ],
         total=Decimal("10.00"),
         valor_pago=Decimal("10.00"),
     )
     with pytest.raises(sqlite3.IntegrityError):
         gravar(con, cupom, morador="Miguel")
     assert con.execute("SELECT COUNT(*) FROM preco WHERE TRIM(cnpj) = ''").fetchone()[0] == 0
-
-

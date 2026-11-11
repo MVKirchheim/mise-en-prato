@@ -9,6 +9,7 @@ consultados — que é o comportamento certo, e o último teste do arquivo é so
 ele. Nos cenários controlados, a janela curta deixa só os preços que o teste
 inseriu.
 """
+
 from decimal import Decimal
 from pathlib import Path
 
@@ -31,18 +32,26 @@ def con(tmp_path):
 
 
 def _produto(con, prefixo):
-    return con.execute("SELECT id FROM produto WHERE descricao_canonica LIKE ?",
-                       (prefixo + "%",)).fetchone()[0]
+    return con.execute(
+        "SELECT id FROM produto WHERE descricao_canonica LIKE ?", (prefixo + "%",)
+    ).fetchone()[0]
 
 
 def _preco(con, produto_id, loja, centavos, *, fonte="menor_preco", quando=None):
     from datetime import datetime
+
     con.execute(
         "INSERT INTO preco (produto_id, unitario_centavos, observado_em, fonte, loja, municipio,"
         " codigo_menor_preco) VALUES (?,?,?,?,?,'MEDIANEIRA',?)",
-        (produto_id, centavos,
-         quando or datetime.now().isoformat(sep=" ", timespec="seconds"),
-         fonte, loja, loja))
+        (
+            produto_id,
+            centavos,
+            quando or datetime.now().isoformat(sep=" ", timespec="seconds"),
+            fonte,
+            loja,
+            loja,
+        ),
+    )
     con.commit()
 
 
@@ -56,7 +65,7 @@ def test_criar_e_montar_lista(con):
     assert guardados[0]["ultimo_preco"] is not None
     assert guardados[0]["ultimo_preco"] > Decimal("0")
 
-    por_produto(con, lista, atum, Decimal("3"))     # de novo: atualiza, não duplica
+    por_produto(con, lista, atum, Decimal("3"))  # de novo: atualiza, não duplica
     assert itens(con, lista)[0]["quantidade"] == Decimal("3.000")
 
     tirar(con, lista, atum)
@@ -101,7 +110,7 @@ def test_loja_mais_barata_com_a_lista_inteira_ganha(con):
     assert r["itens"] == 2
     campeao = r["lojas"][0]
     assert campeao["loja"] == "MUFFATO"
-    assert campeao["total"] == Decimal("20.47")      # 8,49 + 2 x 5,99
+    assert campeao["total"] == Decimal("20.47")  # 8,49 + 2 x 5,99
     assert campeao["completa"] and campeao["cobertura"] == 2
 
 
@@ -112,7 +121,7 @@ def test_loja_barata_pela_metade_nao_ganha_em_silencio(con):
     por_produto(con, lista, atum)
     por_produto(con, lista, leite)
 
-    _preco(con, atum, "BARATINHO", 500)              # só tem o atum, e baratíssimo
+    _preco(con, atum, "BARATINHO", 500)  # só tem o atum, e baratíssimo
     _preco(con, atum, "COMPLETO", 1000)
     _preco(con, leite, "COMPLETO", 600)
 
@@ -122,7 +131,7 @@ def test_loja_barata_pela_metade_nao_ganha_em_silencio(con):
 
     incompleta = r["lojas"][1]
     assert incompleta["loja"] == "BARATINHO"
-    assert incompleta["total"] < r["lojas"][0]["total"]   # é mais barata, e mesmo assim perde
+    assert incompleta["total"] < r["lojas"][0]["total"]  # é mais barata, e mesmo assim perde
     assert incompleta["cobertura"] == 1 and incompleta["de"] == 2
     assert incompleta["falta"] == ["LEITE FRIMESA INT 1LT"]
 
@@ -157,6 +166,7 @@ def test_so_o_preco_mais_recente_de_cada_loja_conta(con):
     atum = _produto(con, "ATUM")
     por_produto(con, lista, atum)
     from datetime import datetime, timedelta
+
     ontem = (datetime.now() - timedelta(days=1)).isoformat(sep=" ", timespec="seconds")
     _preco(con, atum, "LAR", 2000, quando=ontem)
     _preco(con, atum, "LAR", 1097)
@@ -201,6 +211,7 @@ def test_filiais_da_mesma_rede_saem_separadas_e_com_distancia(con):
     indistinguíveis na tela — foi o que apareceu na primeira pesquisa real.
     """
     from datetime import datetime
+
     lista = criar(con, "semana", "Miguel")
     atum = _produto(con, "ATUM")
     por_produto(con, lista, atum)
@@ -209,14 +220,23 @@ def test_filiais_da_mesma_rede_saem_separadas_e_com_distancia(con):
         con.execute(
             "INSERT INTO preco (produto_id, unitario_centavos, observado_em, fonte, loja,"
             " municipio, codigo_menor_preco, distancia_km) VALUES (?,?,?,?,?,?,?,?)",
-            (atum, centavos, agora, "menor_preco", "COOPERATIVA AGROINDUSTRIAL LAR",
-             "MEDIANEIRA", codigo, distancia))
+            (
+                atum,
+                centavos,
+                agora,
+                "menor_preco",
+                "COOPERATIVA AGROINDUSTRIAL LAR",
+                "MEDIANEIRA",
+                codigo,
+                distancia,
+            ),
+        )
     con.commit()
 
     lojas = comparar(con, lista, dias=1)["lojas"]
     assert len(lojas) == 2, "duas filiais, duas linhas"
     assert {loja["distancia_km"] for loja in lojas} == {0.5, 3.3}
-    assert lojas[0]["total"] == Decimal("10.50")     # a mais barata na frente
+    assert lojas[0]["total"] == Decimal("10.50")  # a mais barata na frente
 
 
 def test_janela_larga_nao_descarta_o_que_a_api_deu_por_bom(con):
@@ -226,14 +246,20 @@ def test_janela_larga_nao_descarta_o_que_a_api_deu_por_bom(con):
     com preço válido sumir da comparação como se não vendesse o item.
     """
     from datetime import datetime, timedelta
+
     lista = criar(con, "semana", "Miguel")
     atum = _produto(con, "ATUM")
     por_produto(con, lista, atum)
     ha_duas_semanas = (datetime.now() - timedelta(days=14)).isoformat(sep=" ", timespec="seconds")
     _preco(con, atum, "MERCADO DISTANTE NO TEMPO", 800, quando=ha_duas_semanas)
 
-    assert not any(loja["loja"] == "MERCADO DISTANTE NO TEMPO"
-                   for loja in comparar(con, lista, dias=7)["lojas"])
-    achado = next(loja for loja in comparar(con, lista)["lojas"]
-                  if loja["loja"] == "MERCADO DISTANTE NO TEMPO")
+    assert not any(
+        loja["loja"] == "MERCADO DISTANTE NO TEMPO"
+        for loja in comparar(con, lista, dias=7)["lojas"]
+    )
+    achado = next(
+        loja
+        for loja in comparar(con, lista)["lojas"]
+        if loja["loja"] == "MERCADO DISTANTE NO TEMPO"
+    )
     assert achado["mais_antigo"] == ha_duas_semanas[:10]

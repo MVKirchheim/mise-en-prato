@@ -39,6 +39,13 @@
       <span class="dock-rotulo">Receitas</span>
     </button>
 
+    <button type="button" data-aba="cardapio" class="dock-item" title="Cardápio da Semana">
+      <svg class="dock-icone" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+        <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 14c-3.9 0-7-3.1-7-7s3.1-7 7-7 7 3.1 7 7-3.1 7-7 7z"/>
+      </svg>
+      <span class="dock-rotulo">Cardápio</span>
+    </button>
+
     <button type="button" data-aba="lista" class="dock-item" title="Lista de Compras">
       <svg class="dock-icone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
         <circle cx="9" cy="21" r="1"/>
@@ -390,77 +397,91 @@
           </form>
         </div>
       </div>
+    </section>
 
-      <!-- Modal Modo Cozinha (Fullscreen Hands-Free) -->
-      <div id="modal-modo-cozinha" class="modo-cozinha-overlay" hidden>
-        <div class="modo-cozinha-conteudo">
-          <header class="modo-cozinha-header">
-            <button type="button" class="btn-fechar-cozinha" onclick="fecharModoCozinha()">← Voltar</button>
-            <div class="modo-cozinha-badges">
-              <span id="cozinha-status-wake" class="badge-mercado ativo">💡 Tela acesa</span>
-              <span id="cozinha-badge-categoria" class="badge-categoria"></span>
-            </div>
-          </header>
-
-          <div class="modo-cozinha-corpo">
-            <div id="cozinha-foto-container" class="cozinha-foto" hidden>
-              <img id="cozinha-foto" alt="Foto do prato">
-            </div>
-
-            <h1 id="cozinha-titulo" class="cozinha-titulo"></h1>
-            <div class="cozinha-meta fraca">
-              <span id="cozinha-tempo"></span>
-              <span id="cozinha-divisor-meta">•</span>
-              <span>Porções:</span>
-              <div class="seletor-escala-porcoes">
-                <button type="button" class="btn-escala" onclick="ajustarEscalaCozinha(0.5)">½x</button>
-                <button type="button" class="btn-escala ativo" onclick="ajustarEscalaCozinha(1)">1x</button>
-                <button type="button" class="btn-escala" onclick="ajustarEscalaCozinha(2)">2x</button>
-                <button type="button" class="btn-escala" onclick="ajustarEscalaCozinha(3)">3x</button>
-                <button type="button" class="btn-escala" onclick="ajustarEscalaCozinha(4)">4x</button>
-              </div>
-            </div>
-
-            <div class="cozinha-secao-ingredientes">
-              <div class="linha" style="margin-bottom:.5rem">
-                <h2 style="margin:0">Mise en place (Ingredientes)</h2>
-                <button type="button" class="btn-comprar-faltantes" onclick="abrirModalEnviarLista()">🛒 Comprar ingredientes</button>
-              </div>
-              <p class="dica" style="margin:0 0 .6rem">Toque no ingrediente para marcar o que já separou ou adicionou:</p>
-              <div id="cozinha-lista-ingredientes" class="cozinha-checklist"></div>
-            </div>
-
-            <div class="cozinha-secao-instrucoes">
-              <h2>Instruções de Preparo</h2>
-              <div id="cozinha-instrucoes-texto" class="cozinha-passos"></div>
-            </div>
-          </div>
-        </div>
+    <!-- ── cardápio ────────────────────────────────────────────────────────── -->
+    <section id="aba-cardapio" hidden>
+      <div class="cardapio-topo">
+        <button type="button" id="cardapio-anterior" class="cardapio-nav" aria-label="Semana anterior">‹</button>
+        <h2 id="cardapio-intervalo" class="cardapio-intervalo" aria-live="polite" tabindex="-1">Cardápio</h2>
+        <button type="button" id="cardapio-proxima" class="cardapio-nav" aria-label="Próxima semana">›</button>
+        <button type="button" id="cardapio-hoje" class="botao-secundario cardapio-btn-hoje">Hoje</button>
       </div>
-
-      <!-- Modal Enviar para Lista de Compras -->
-      <div id="modal-enviar-lista" class="modal-backdrop" hidden>
-        <div class="modal-conteudo" style="max-width:32rem">
-          <div class="linha" style="margin-bottom:.8rem">
-            <h3 style="margin:0">Comprar Ingredientes</h3>
-            <button type="button" class="btn-fechar-modal" onclick="fecharModalEnviarLista()">✕</button>
-          </div>
-          <p class="dica">Desmarque o que você já tem em casa. O restante irá para sua lista:</p>
-          <div id="enviar-lista-checklist" style="display:flex;flex-direction:column;gap:.4rem;margin:1rem 0;max-height:16rem;overflow-y:auto"></div>
-
-          <div style="margin-top:.8rem">
-            <label class="rotulo" for="select-destino-lista">Adicionar a qual lista?</label>
-            <select id="select-destino-lista" style="width:100%;padding:.6rem;border-radius:10px;border:1px solid var(--borda);background:var(--painel);color:var(--tinta);font:inherit"></select>
-          </div>
-
-          <div style="display:flex;justify-content:flex-end;gap:.6rem;margin-top:1.2rem">
-            <button type="button" class="botao-secundario" onclick="fecharModalEnviarLista()">Cancelar</button>
-            <button type="button" class="acao" onclick="confirmarEnviarParaLista()">Adicionar à Lista</button>
-          </div>
-        </div>
-      </div>
+      <p id="cardapio-guia" class="dica cardapio-guia" hidden>Semana em branco: toque em + num almoço ou jantar para planejar.</p>
+      <div id="cardapio-dias" class="cardapio-dias"></div>
     </section>
   </main>
+
+  <!-- Modo Cozinha e envio para lista ficam fora das abas: o cardápio também abre
+       o Modo Cozinha, e um ancestral hidden esconderia o overlay fixo. -->
+  <!-- Modal Modo Cozinha (Fullscreen Hands-Free) -->
+  <div id="modal-modo-cozinha" class="modo-cozinha-overlay" hidden>
+    <div class="modo-cozinha-conteudo">
+      <header class="modo-cozinha-header">
+        <button type="button" class="btn-fechar-cozinha" onclick="fecharModoCozinha()">← Voltar</button>
+        <div class="modo-cozinha-badges">
+          <span id="cozinha-status-wake" class="badge-mercado ativo">💡 Tela acesa</span>
+          <span id="cozinha-badge-categoria" class="badge-categoria"></span>
+        </div>
+      </header>
+
+      <div class="modo-cozinha-corpo">
+        <div id="cozinha-foto-container" class="cozinha-foto" hidden>
+          <img id="cozinha-foto" alt="Foto do prato">
+        </div>
+
+        <h1 id="cozinha-titulo" class="cozinha-titulo"></h1>
+        <div class="cozinha-meta fraca">
+          <span id="cozinha-tempo"></span>
+          <span id="cozinha-divisor-meta">•</span>
+          <span>Porções:</span>
+          <div class="seletor-escala-porcoes">
+            <button type="button" class="btn-escala" onclick="ajustarEscalaCozinha(0.5)">½x</button>
+            <button type="button" class="btn-escala ativo" onclick="ajustarEscalaCozinha(1)">1x</button>
+            <button type="button" class="btn-escala" onclick="ajustarEscalaCozinha(2)">2x</button>
+            <button type="button" class="btn-escala" onclick="ajustarEscalaCozinha(3)">3x</button>
+            <button type="button" class="btn-escala" onclick="ajustarEscalaCozinha(4)">4x</button>
+          </div>
+        </div>
+
+        <div class="cozinha-secao-ingredientes">
+          <div class="linha" style="margin-bottom:.5rem">
+            <h2 style="margin:0">Mise en place (Ingredientes)</h2>
+            <button type="button" class="btn-comprar-faltantes" onclick="abrirModalEnviarLista()">🛒 Comprar ingredientes</button>
+          </div>
+          <p class="dica" style="margin:0 0 .6rem">Toque no ingrediente para marcar o que já separou ou adicionou:</p>
+          <div id="cozinha-lista-ingredientes" class="cozinha-checklist"></div>
+        </div>
+
+        <div class="cozinha-secao-instrucoes">
+          <h2>Instruções de Preparo</h2>
+          <div id="cozinha-instrucoes-texto" class="cozinha-passos"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Enviar para Lista de Compras -->
+  <div id="modal-enviar-lista" class="modal-backdrop" hidden>
+    <div class="modal-conteudo" style="max-width:32rem">
+      <div class="linha" style="margin-bottom:.8rem">
+        <h3 style="margin:0">Comprar Ingredientes</h3>
+        <button type="button" class="btn-fechar-modal" onclick="fecharModalEnviarLista()">✕</button>
+      </div>
+      <p class="dica">Desmarque o que você já tem em casa. O restante irá para sua lista:</p>
+      <div id="enviar-lista-checklist" style="display:flex;flex-direction:column;gap:.4rem;margin:1rem 0;max-height:16rem;overflow-y:auto"></div>
+
+      <div style="margin-top:.8rem">
+        <label class="rotulo" for="select-destino-lista">Adicionar a qual lista?</label>
+        <select id="select-destino-lista" style="width:100%;padding:.6rem;border-radius:10px;border:1px solid var(--borda);background:var(--painel);color:var(--tinta);font:inherit"></select>
+      </div>
+
+      <div style="display:flex;justify-content:flex-end;gap:.6rem;margin-top:1.2rem">
+        <button type="button" class="botao-secundario" onclick="fecharModalEnviarLista()">Cancelar</button>
+        <button type="button" class="acao" onclick="confirmarEnviarParaLista()">Adicionar à Lista</button>
+      </div>
+    </div>
+  </div>
 
   <!-- Bottom Sheet de Ações Rápidas -->
   <div id="sheet-acoes-backdrop" class="sheet-backdrop" hidden onclick="fecharSheetAcoes()"></div>
@@ -530,8 +551,92 @@
     </div>
   </div>
 
+  <!-- Painel inferior do cardápio: adicionar, editar, mover e remover entradas -->
+  <div id="sheet-cardapio-backdrop" class="sheet-backdrop" hidden></div>
+  <div id="sheet-cardapio" class="sheet-painel sheet-cardapio" hidden role="dialog" aria-modal="true"
+    aria-labelledby="sheet-cardapio-titulo">
+    <div class="sheet-handle"></div>
+    <div class="sheet-cabecalho">
+      <div>
+        <h3 id="sheet-cardapio-titulo" class="sheet-titulo">Adicionar</h3>
+        <div id="sheet-cardapio-subtitulo" class="fraca"></div>
+      </div>
+      <button type="button" id="sheet-cardapio-fechar" class="btn-fechar-modal" aria-label="Fechar">✕</button>
+    </div>
+
+    <!-- modo adicionar -->
+    <div id="cardapio-modo-adicionar">
+      <div id="cardapio-escolha-receita">
+        <label class="rotulo" for="cardapio-busca">Do livro de receitas</label>
+        <input id="cardapio-busca" type="search" placeholder="Buscar receita…" autocomplete="off">
+        <div id="cardapio-resultados" class="cardapio-resultados" role="list"></div>
+      </div>
+
+      <div id="cardapio-receita-escolhida" class="cardapio-escolhida" hidden>
+        <div class="linha" style="align-items:center">
+          <strong id="cardapio-escolhida-nome"></strong>
+          <button type="button" id="cardapio-trocar-receita" class="btn-link-secundario">trocar</button>
+        </div>
+        <div class="cardapio-porcoes-linha">
+          <span class="rotulo" id="cardapio-add-porcoes-rotulo" style="margin:0">Porções</span>
+          <div class="cardapio-stepper" role="group" aria-labelledby="cardapio-add-porcoes-rotulo">
+            <button type="button" class="cardapio-stepper-btn" data-passo="-1" data-alvo="cardapio-add-porcoes" aria-label="Menos uma porção">−</button>
+            <input type="number" id="cardapio-add-porcoes" min="1" step="1" inputmode="numeric" aria-labelledby="cardapio-add-porcoes-rotulo">
+            <button type="button" class="cardapio-stepper-btn" data-passo="1" data-alvo="cardapio-add-porcoes" aria-label="Mais uma porção">+</button>
+          </div>
+        </div>
+        <button type="button" id="cardapio-add-receita" class="acao" style="width:100%">Adicionar receita</button>
+      </div>
+
+      <form id="cardapio-form-texto" class="cardapio-form-texto">
+        <label class="rotulo" for="cardapio-texto">Ou texto livre</label>
+        <div style="display:flex;gap:.4rem">
+          <input id="cardapio-texto" type="text" maxlength="200" placeholder="Ex: sobras, pizza" autocomplete="off">
+          <button type="submit">Adicionar</button>
+        </div>
+      </form>
+    </div>
+
+    <!-- modo editar -->
+    <form id="cardapio-modo-editar" hidden>
+      <label class="rotulo" for="cardapio-edit-titulo">Título</label>
+      <input id="cardapio-edit-titulo" type="text" maxlength="200" required autocomplete="off">
+
+      <div class="cardapio-porcoes-linha">
+        <span class="rotulo" id="cardapio-edit-porcoes-rotulo" style="margin:0">Porções</span>
+        <div class="cardapio-stepper" role="group" aria-labelledby="cardapio-edit-porcoes-rotulo">
+          <button type="button" class="cardapio-stepper-btn" data-passo="-1" data-alvo="cardapio-edit-porcoes" aria-label="Menos uma porção">−</button>
+          <input type="number" id="cardapio-edit-porcoes" min="1" step="1" inputmode="numeric" placeholder="—" aria-labelledby="cardapio-edit-porcoes-rotulo">
+          <button type="button" class="cardapio-stepper-btn" data-passo="1" data-alvo="cardapio-edit-porcoes" aria-label="Mais uma porção">+</button>
+        </div>
+      </div>
+
+      <div class="cardapio-mover">
+        <div style="flex:1.3">
+          <label class="rotulo" for="cardapio-edit-data">Dia</label>
+          <input id="cardapio-edit-data" type="date" required>
+        </div>
+        <div style="flex:1">
+          <label class="rotulo" for="cardapio-edit-refeicao">Refeição</label>
+          <select id="cardapio-edit-refeicao" class="cardapio-select">
+            <option value="almoco">Almoço</option>
+            <option value="jantar">Jantar</option>
+          </select>
+        </div>
+      </div>
+
+      <button type="button" id="cardapio-edit-cozinha" class="btn-link-secundario" hidden>Abrir no Modo Cozinha</button>
+
+      <div class="cardapio-edit-acoes">
+        <button type="button" id="cardapio-edit-remover" class="botao-secundario cardapio-btn-remover">Remover</button>
+        <button type="submit" id="cardapio-edit-salvar">Salvar</button>
+      </div>
+    </form>
+  </div>
+
   <script src="/app.js"></script>
   <script src="/receitas.js" defer></script>
+  <script src="/cardapio.js" defer></script>
 </body>
 
 </html>

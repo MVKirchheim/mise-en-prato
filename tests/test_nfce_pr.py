@@ -5,6 +5,7 @@ Ela foi anonimizada antes de entrar no repositório — o nome do operador de
 caixa saiu, e a chave de acesso e o protocolo foram mascarados preservando o
 formato. O que se testa aqui é a leitura, não o conteúdo da compra.
 """
+
 from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
@@ -22,8 +23,10 @@ from mise_en_prato.nfce_pr import (
 )
 
 FIXTURE = Path(__file__).parent / "fixtures" / "cupom_lar_2026-08-14.html"
-URL_QR = ("https://www.fazenda.pr.gov.br/nfce/qrcode?p=41260877752293016191651170001637541131086428"
-          "|2|1|1|1E778A47C5BAEDD69BFCD4A14F8CD2A19C5CD919")
+URL_QR = (
+    "https://www.fazenda.pr.gov.br/nfce/qrcode?p=41260877752293016191651170001637541131086428"
+    "|2|1|1|1E778A47C5BAEDD69BFCD4A14F8CD2A19C5CD919"
+)
 
 
 @pytest.fixture(scope="module")
@@ -34,10 +37,10 @@ def cupom():
 def test_estabelecimento(cupom):
     e = cupom.estabelecimento
     assert e.razao == "LAR COOPERATIVA AGROINDUSTRIAL"
-    assert e.cnpj == "77752293016191"          # 14 dígitos, sem pontuação
+    assert e.cnpj == "77752293016191"  # 14 dígitos, sem pontuação
     assert e.logradouro == "AV RIO GRANDE DO SUL"
     assert e.numero == "2876"
-    assert e.complemento == ""                 # campo vazio no meio do endereço
+    assert e.complemento == ""  # campo vazio no meio do endereço
     assert e.bairro == "SAO CRISTOVAO"
     assert e.municipio == "MEDIANEIRA"
     assert e.uf == "PR"
@@ -66,7 +69,7 @@ def test_itens(cupom):
     primeiro = cupom.itens[0]
     assert primeiro.seq == 1
     assert primeiro.descricao == "ATUM GOM COSTA RALADO NAT. 170G"
-    assert primeiro.codigo_loja == "456641"     # código interno da loja, não é GTIN
+    assert primeiro.codigo_loja == "456641"  # código interno da loja, não é GTIN
     assert primeiro.unidade == "PT"
     assert primeiro.valor_unitario == Decimal("10.97")
     assert primeiro.valor_total == Decimal("10.97")
@@ -119,11 +122,14 @@ def test_cupom_vazio_avisa_em_vez_de_estourar():
     assert any("chave" in a for a in cupom.avisos)
 
 
-@pytest.mark.parametrize("entrada", [
-    URL_QR,
-    "41260877752293016191651170001637541131086428",
-    "4126 0877 7522 9301 6191 6511 7000 1637 5411 3108 6428",
-])
+@pytest.mark.parametrize(
+    "entrada",
+    [
+        URL_QR,
+        "41260877752293016191651170001637541131086428",
+        "4126 0877 7522 9301 6191 6511 7000 1637 5411 3108 6428",
+    ],
+)
 def test_chave_da_url(entrada):
     assert chave_da_url(entrada) == "41260877752293016191651170001637541131086428"
 
@@ -284,10 +290,10 @@ def test_dados_da_chave_dizem_loja_mes_e_numero():
     nos 8 cupons do banco da casa em 27/08/2026, 8 de 8.
     """
     dados = dados_da_chave(CHAVE)
-    assert dados["uf"] == "41"                       # Paraná
+    assert dados["uf"] == "41"  # Paraná
     assert (dados["ano"], dados["mes"]) == (2026, 8)
     assert dados["cnpj"] == "77752293016191"
-    assert dados["modelo"] == "65"                   # NFC-e
+    assert dados["modelo"] == "65"  # NFC-e
     assert (dados["serie"], dados["numero"]) == ("117", "163754")
 
 
@@ -306,6 +312,7 @@ def test_buscar_higieniza_bom(monkeypatch):
 
     class RespostaMock:
         text = "<html>ok</html>"
+
         def raise_for_status(self):
             pass
 
@@ -314,6 +321,7 @@ def test_buscar_higieniza_bom(monkeypatch):
         return RespostaMock()
 
     import httpx
+
     monkeypatch.setattr(httpx, "get", mock_get)
 
     buscar("\ufeff" + URL_QR)
@@ -339,12 +347,15 @@ def test_interpretar_pagina_erro_sefaz():
 
 def test_buscar_pagina_erro_sefaz(monkeypatch):
     """buscar() deve levantar ErroSefaz se a resposta contiver página de erro."""
+
     class RespostaErroMock:
         text = '<div id="flashMessage">Erro na SEFAZ</div>'
+
         def raise_for_status(self):
             pass
 
     import httpx
+
     monkeypatch.setattr(httpx, "get", lambda url, **kwargs: RespostaErroMock())
 
     with pytest.raises(ErroSefaz, match="Erro na SEFAZ"):
@@ -367,5 +378,4 @@ def test_interpretar_pagina_erro_sefaz_variacoes():
 
     # Erro de QRCode mal formatado
     with pytest.raises(ErroSefaz, match="Url do QRCode mal formatad"):
-        interpretar('<html><body>Aviso: Url do QRCode mal formatada</body></html>')
-
+        interpretar("<html><body>Aviso: Url do QRCode mal formatada</body></html>")

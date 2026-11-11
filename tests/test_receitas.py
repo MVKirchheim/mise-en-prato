@@ -13,7 +13,6 @@ Cobre todo o ciclo de vida:
 import io
 import sqlite3
 from decimal import Decimal
-from mise_en_prato.receitas import calcular_fator_rendimento
 from pathlib import Path
 
 import pytest
@@ -26,6 +25,7 @@ from mise_en_prato.receitas import (
     adicionar_ingrediente,
     atualizar_receita,
     buscar_receitas,
+    calcular_fator_rendimento,
     criar_receita,
     escalar_receita,
     excluir_receita,
@@ -207,9 +207,7 @@ def test_adicionar_ingrediente_objeto(con):
 def test_listar_receitas(con):
     criar_receita(con, nome="Receita A", porcoes=2)
     rec_b = criar_receita(con, nome="Receita B", porcoes=4)
-    adicionar_ingrediente(
-        con, rec_b, "Ingrediente B1", Decimal("100"), "g"
-    )
+    adicionar_ingrediente(con, rec_b, "Ingrediente B1", Decimal("100"), "g")
 
     receitas = listar_receitas(con)
     assert len(receitas) >= 2
@@ -281,9 +279,12 @@ def test_integridade_referencial_on_delete_cascade(con):
     adicionar_ingrediente(con, rec_id, "Item 1", Decimal("100"), "g")
     adicionar_ingrediente(con, rec_id, "Item 2", Decimal("200"), "ml")
 
-    assert con.execute(
-        "SELECT COUNT(*) FROM ingredientes WHERE receita_id = ?", (rec_id,)
-    ).fetchone()[0] == 2
+    assert (
+        con.execute("SELECT COUNT(*) FROM ingredientes WHERE receita_id = ?", (rec_id,)).fetchone()[
+            0
+        ]
+        == 2
+    )
 
     # Exclui a receita
     sucesso = excluir_receita(con, rec_id)
@@ -542,11 +543,10 @@ def test_preservacao_tabelas_legadas(con):
     con.execute(
         "INSERT INTO produto (descricao_canonica, acompanhar) VALUES ('ARROZ BRANCO 5KG', 1)"
     )
-    cursor = con.execute(
-        "SELECT id FROM produto WHERE descricao_canonica = 'ARROZ BRANCO 5KG'"
-    )
+    cursor = con.execute("SELECT id FROM produto WHERE descricao_canonica = 'ARROZ BRANCO 5KG'")
     p_id = cursor.fetchone()[0]
     assert p_id > 0
+
 
 class TestFatorRendimento:
     def test_calculo_proporcional_normal(self):

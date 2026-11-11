@@ -1,4 +1,5 @@
 """Testes do CLI de reprocessamento de cupons salvos em disco."""
+
 from pathlib import Path
 
 from mise_en_prato.banco import conectar

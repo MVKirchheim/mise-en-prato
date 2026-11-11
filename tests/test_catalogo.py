@@ -3,6 +3,7 @@
 O catálogo satélite vive em dados/catalogo.db de forma isolada do banco
 transacional principal dados/mise_en_prato.db.
 """
+
 import gzip
 import json
 
@@ -123,12 +124,24 @@ def test_parse_openfoodfacts_dict():
 
 def test_parse_cmed_linha():
     colunas = [
-        "SUBSTÂNCIA", "LABORATÓRIO", "CÓDIGO GGFIS", "REGISTRO", "EAN 1",
-        "PRODUTO", "APRESENTAÇÃO", "CLASSE TERAPÊUTICA"
+        "SUBSTÂNCIA",
+        "LABORATÓRIO",
+        "CÓDIGO GGFIS",
+        "REGISTRO",
+        "EAN 1",
+        "PRODUTO",
+        "APRESENTAÇÃO",
+        "CLASSE TERAPÊUTICA",
     ]
     linha = [
-        "PARACETAMOL", "MEDLEY FARMACÊUTICA LTDA", "123", "101810101",
-        "7896422505512", "PARACETAMOL", "500 MG COM CT BL AL PLAS INC X 20", "ANALGÉSICOS"
+        "PARACETAMOL",
+        "MEDLEY FARMACÊUTICA LTDA",
+        "123",
+        "101810101",
+        "7896422505512",
+        "PARACETAMOL",
+        "500 MG COM CT BL AL PLAS INC X 20",
+        "ANALGÉSICOS",
     ]
     parsed = parse_cmed_linha(linha, colunas)
     assert parsed is not None
@@ -225,4 +238,3 @@ def test_sincronizar_gtins_existentes(db_catalogo):
     assert prod["marca"] == "PIRACANJUBA"
     assert prod["nutriscore"] == "B"
     assert prod["nova_group"] == 1
-
