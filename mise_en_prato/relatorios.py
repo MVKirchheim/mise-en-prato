@@ -5,6 +5,7 @@ Tudo em SQL explícito, e todo dinheiro sai daqui já em Decimal. Somar centavos
 inteiros no sqlite é exato; somar Decimal em python depois de um float não é.
 """
 
+import re
 import sqlite3
 from datetime import date
 from decimal import Decimal
@@ -12,6 +13,47 @@ from decimal import Decimal
 from .banco import reais, unidades
 
 SEM_CATEGORIA = "sem categoria"
+MAIORES_PADRAO = 15
+_MES = re.compile(r"\d{4}-(0[1-9]|1[0-2])")
+
+
+def validar_mes(mes: str) -> str:
+    """Devolve o mês ("2026-08") ou levanta ValueError com a explicação.
+
+    Sem isto, "2026-13" passava calado e devolvia um mês zerado que não existe,
+    e "agosto" virava erro 500 no split.
+    """
+    mes = (mes or "").strip()
+    if not _MES.fullmatch(mes):
+        raise ValueError(f"mês inválido: {mes!r}. Use AAAA-MM, por exemplo 2026-08.")
+    return mes
+
+
+def mes_corrente(hoje: date | None = None) -> str:
+    return (hoje or date.today()).strftime("%Y-%m")
+
+
+def somar_meses(mes: str, n: int) -> str:
+    """'2026-01' + (-1) = '2025-12'. Conta em meses, sem passar por dia."""
+    ano, m = (int(p) for p in mes.split("-"))
+    indice = ano * 12 + (m - 1) + n
+    return f"{indice // 12:04d}-{indice % 12 + 1:02d}"
+
+
+def fim_da_janela(mes: str | None, limite: int = 12, hoje: date | None = None) -> str:
+    """Último mês do gráfico: o corrente, a não ser que o mês em foco fique fora.
+
+    O gráfico mostra `limite` meses terminando no mês corrente. Se o mês em foco
+    é mais antigo que isso (ou à frente, quando o relógio do navegador está
+    adiantado em relação ao do servidor), a janela passa a terminar nele — a
+    coluna destacada nunca some do gráfico.
+    """
+    atual = mes_corrente(hoje)
+    if not mes:
+        return atual
+    if mes > atual or mes < somar_meses(atual, -(limite - 1)):
+        return mes
+    return atual
 
 
 def _quanto(linha) -> dict:
@@ -30,17 +72,121 @@ def _quanto(linha) -> dict:
     return {"quantidade": unidades(linha["quantidade"]), "unidade": linha["unidade"]}
 
 
-def meses_com_gasto(con: sqlite3.Connection, limite: int = 12) -> list[dict]:
-    """Série mensal, do mês mais recente para trás. É o gráfico da aba Gastos."""
-    return [
-        {"mes": r["mes"], "total": reais(r["total"]), "cupons": r["cupons"]}
+def meses_com_gasto(
+    con: sqlite3.Connection, limite: int = 12, ate: str | None = None
+) -> list[dict]:
+    """Série mensal, do mês mais recente para trás. É o gráfico da aba Gastos.
+
+    Sempre `limite` meses seguidos, terminando em `ate` (padrão: o mês
+    corrente). Mês sem cupom entra zerado: buraco no eixo do tempo faria duas
+    colunas vizinhas parecerem meses vizinhos quando não são.
+    """
+    fim = ate or mes_corrente()
+    inicio = somar_meses(fim, -(limite - 1))
+    achados = {
+        r["mes"]: r
         for r in con.execute(
             """SELECT strftime('%Y-%m', emitido_em) AS mes,
                       SUM(pago_centavos) AS total, COUNT(*) AS cupons
                  FROM cupom
                 WHERE emitido_em IS NOT NULL
-                GROUP BY mes ORDER BY mes DESC LIMIT ?""",
-            (limite,),
+                  AND strftime('%Y-%m', emitido_em) BETWEEN ? AND ?
+                GROUP BY mes""",
+            (inicio, fim),
+        )
+    }
+    serie = []
+    for k in range(limite):
+        mes = somar_meses(fim, -k)
+        r = achados.get(mes)
+        serie.append(
+            {
+                "mes": mes,
+                "total": reais(r["total"] or 0) if r else Decimal("0.00"),
+                "cupons": r["cupons"] if r else 0,
+            }
+        )
+    return serie
+
+
+def _forma_legivel(forma: str | None) -> str | None:
+    """Rótulo da forma de pagamento para o gráfico, ou None se não há dado.
+
+    O leitor do DANFE junta as linhas do quadro de pagamento com " + ", e o
+    "Troco" entra como se fosse uma delas — troco não é forma de pagamento.
+    O OCR grava "DIVERSOS" quando não achou nada no papel: também é ausência.
+    """
+    partes = [p.strip() for p in (forma or "").split("+")]
+    partes = [p for p in partes if p and not p.lower().startswith("troco")]
+    if not partes or [p.upper() for p in partes] == ["DIVERSOS"]:
+        return None
+    return " + ".join(partes)
+
+
+def _pagamento_do_mes(con: sqlite3.Connection, mes: str) -> dict:
+    """Desconto do mês e quanto saiu por forma de pagamento.
+
+    Soma pago_centavos, como o total do mês: as barras fecham com o total
+    (fora os cupons sem forma de pagamento, que são contados à parte).
+    """
+    por_forma: dict[str, list[int]] = {}
+    sem_forma = 0
+    for r in con.execute(
+        """SELECT forma_pagamento, SUM(pago_centavos) AS total, COUNT(*) AS cupons
+             FROM cupom WHERE strftime('%Y-%m', emitido_em) = ?
+            GROUP BY forma_pagamento""",
+        (mes,),
+    ):
+        rotulo = _forma_legivel(r["forma_pagamento"])
+        if rotulo is None:
+            sem_forma += r["cupons"]
+            continue
+        acumulado = por_forma.setdefault(rotulo, [0, 0])
+        acumulado[0] += r["total"] or 0
+        acumulado[1] += r["cupons"]
+
+    desconto = con.execute(
+        "SELECT SUM(desconto_centavos) FROM cupom WHERE strftime('%Y-%m', emitido_em) = ?",
+        (mes,),
+    ).fetchone()[0]
+    return {
+        "desconto_total": reais(desconto or 0),
+        "por_forma_pagamento": [
+            {"forma": forma, "total": reais(total), "cupons": cupons}
+            for forma, (total, cupons) in sorted(
+                por_forma.items(), key=lambda par: (-par[1][0], par[0])
+            )
+        ],
+        "cupons_sem_forma_pagamento": sem_forma,
+    }
+
+
+def cupons_do_mes(con: sqlite3.Connection, mes: str) -> list[dict]:
+    """Os cupons que formam o total do mês, do mais novo para o mais antigo.
+
+    O filtro é o MESMO strftime do total em resumo_do_mes: a soma do que esta
+    lista mostra tem de dar o número grande do topo da tela, centavo a centavo.
+    Cupom incompleto entra (ele entra no total) e vai marcado.
+    """
+    return [
+        {
+            "chave": r["chave"],
+            "emitido_em": r["emitido_em"],
+            "loja": r["razao"],
+            "morador": r["morador"],
+            "valor_pago": reais(r["pago_centavos"]),
+            "desconto": reais(r["desconto_centavos"]),
+            "completo": bool(r["completo"]),
+            "itens": r["itens"],
+        }
+        for r in con.execute(
+            """SELECT c.chave, c.emitido_em, c.morador, c.pago_centavos,
+                      c.desconto_centavos, c.completo, e.razao,
+                      (SELECT COUNT(*) FROM item i WHERE i.chave = c.chave) AS itens
+                 FROM cupom c LEFT JOIN estabelecimento e ON e.cnpj = c.cnpj
+                WHERE strftime('%Y-%m', c.emitido_em) = ?
+                ORDER BY c.emitido_em DESC, c.chave""",
+            (mes,),
         )
     ]
 
@@ -52,14 +198,16 @@ def _fatia(con, sql: str, mes: str, rotulo: str) -> list[dict]:
     ]
 
 
-def resumo_do_mes(con: sqlite3.Connection, mes: str | None = None) -> dict:
+def resumo_do_mes(
+    con: sqlite3.Connection, mes: str | None = None, limite: int = MAIORES_PADRAO
+) -> dict:
     """Fecha o mês: total, quebra por mercado e por morador, e o mês anterior.
 
-    `mes` no formato "2026-08". Sem argumento, o mês corrente.
+    `mes` no formato "2026-08". Sem argumento, o mês corrente. `limite` corta a
+    lista de maiores gastos; 0 devolve todos os produtos do mês.
     """
-    mes = mes or date.today().strftime("%Y-%m")
-    ano, m = (int(p) for p in mes.split("-"))
-    anterior = f"{ano - 1:04d}-12" if m == 1 else f"{ano:04d}-{m - 1:02d}"
+    mes = validar_mes(mes) if mes else mes_corrente()
+    anterior = somar_meses(mes, -1)
 
     def total_de(alvo: str) -> Decimal:
         bruto = con.execute(
@@ -130,8 +278,10 @@ def resumo_do_mes(con: sqlite3.Connection, mes: str | None = None) -> dict:
               JOIN cupom c ON c.chave = i.chave
               JOIN produto p ON p.id = i.produto_id
              WHERE strftime('%Y-%m', c.emitido_em) = ?
-             GROUP BY i.produto_id ORDER BY total DESC LIMIT 15""",
-            (mes,),
+             -- O desempate por produto_id é o que garante que os 15 primeiros
+             -- de "ver todos" sejam os mesmos 15, na mesma ordem.
+             GROUP BY i.produto_id ORDER BY total DESC, i.produto_id LIMIT ?""",
+            (mes, limite if limite > 0 else -1),
         )
     ]
 
@@ -179,6 +329,8 @@ def resumo_do_mes(con: sqlite3.Connection, mes: str | None = None) -> dict:
         "por_morador": por_morador,
         "por_categoria": por_categoria,
         "maiores": maiores,
+        # Desconto é informação à parte: o total acima continua sendo o pago.
+        **_pagamento_do_mes(con, mes),
         "perfil_nutricional": {
             "por_nova": por_nova,
             "total_classificado": total_classificado,

@@ -695,14 +695,39 @@ async def ver_foto_falha(nome: str, _: Morador):
     return FileResponse(caminho, media_type="image/jpeg")
 
 
+def _mes_pedido(mes: str) -> str | None:
+    """O `?mes=` da tela, validado. Vazio é o mês corrente; inválido é 422."""
+    if not mes:
+        return None
+    try:
+        return relatorios.validar_mes(mes)
+    except ValueError as erro:
+        raise HTTPException(422, str(erro)) from erro
+
+
 @app.get("/api/gastos")
-async def gastos(_: Morador, con: Banco, mes: str = ""):
+async def gastos(_: Morador, con: Banco, mes: str = "", limite: int = relatorios.MAIORES_PADRAO):
+    """O mês em foco e o gráfico de 12 meses que sempre o contém.
+
+    `limite` corta a lista de maiores gastos; 0 traz todos os produtos do mês.
+    """
+    alvo = _mes_pedido(mes)
+    if limite < 0:
+        raise HTTPException(422, "limite inválido: use 0 para todos ou um número positivo.")
     return responder(
         {
-            "resumo": relatorios.resumo_do_mes(con, mes or None),
-            "meses": relatorios.meses_com_gasto(con),
+            "resumo": relatorios.resumo_do_mes(con, alvo, limite=limite),
+            "meses": relatorios.meses_com_gasto(con, ate=relatorios.fim_da_janela(alvo)),
         }
     )
+
+
+@app.get("/api/gastos/cupons")
+async def gastos_cupons(_: Morador, con: Banco, mes: str = ""):
+    """Os cupons do mês, do mais novo para o mais antigo. Os itens de cada um
+    saem de GET /api/cupom/{chave}, sob demanda, quando a tela abre o cupom."""
+    alvo = _mes_pedido(mes) or relatorios.mes_corrente()
+    return responder({"mes": alvo, "cupons": relatorios.cupons_do_mes(con, alvo)})
 
 
 @app.get("/api/produtos")
