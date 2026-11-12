@@ -22,15 +22,7 @@
   let buscaAgendada = null;
 
   // ── utilitários ───────────────────────────────────────────────────────────
-  function escapar(texto) {
-    return String(texto ?? '')
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#39;');
-  }
-
+  // escapar() vem de app.js (global).
   const doisDigitos = (n) => String(n).padStart(2, '0');
 
   /* AAAA-MM-DD na hora local do navegador. */
