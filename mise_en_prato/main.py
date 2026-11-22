@@ -10,6 +10,7 @@ que chega já passou pelo Tailscale — falta apenas perguntar ao tailscaled que
 
 import asyncio
 import dataclasses
+import hmac
 import json
 import logging
 import re
@@ -30,6 +31,7 @@ from . import (
     cardapio,
     catalogo,
     cupons,
+    encartes,
     enriquecimento,
     listas,
     menor_preco,
@@ -1980,6 +1982,57 @@ async def deletar_entrada_cardapio(entrada_id: int, _: Morador, con: Banco):
     except cardapio.EntradaNaoEncontrada as erro:
         raise HTTPException(404, "Entrada do cardápio não encontrada") from erro
     return responder({"ok": True})
+
+
+# ── encartes de mercado ──────────────────────────────────────────────────────
+# Acima disto nem se lê o JSON: a imagem já passaria do teto de 10 MB do
+# encartes.py, e base64 incha um terço.
+LIMITE_WEBHOOK_ENCARTES = 20 * 1024 * 1024
+
+
+@app.post("/api/encartes/webhook")
+async def webhook_encartes(request: Request, con: Banco):
+    """O que a Evolution API manda a cada mensagem que chega no WhatsApp.
+
+    Sem Morador: quem chama é o contêiner da Evolution, não uma pessoa. O
+    segredo no cabeçalho é a autenticação. Descarte responde 200 (a Evolution
+    não reenvia); falha de banco ou disco vira 5xx, e ela reenvia.
+
+    `async` de propósito: as chamadas rodam uma de cada vez no laço, e a mesma
+    mensagem emitida duas vezes não passa pelas duas checagens de repetido ao
+    mesmo tempo.
+    """
+    cfg = config()
+    if cfg.app_mode == "demo":
+        raise HTTPException(403, "Recebimento de encartes desativado na demonstração pública.")
+    if not cfg.encarte_webhook_segredo:
+        raise HTTPException(403, "webhook de encartes não configurado")
+    recebido = request.headers.get("x-webhook-segredo", "")
+    if not hmac.compare_digest(recebido.encode(), cfg.encarte_webhook_segredo.encode()):
+        raise HTTPException(401, "segredo do webhook inválido")
+
+    declarado = request.headers.get("content-length", "")
+    if declarado.isdigit() and int(declarado) > LIMITE_WEBHOOK_ENCARTES:
+        log.info("webhook de encartes: %s", encartes.GRANDE_DEMAIS)
+        return responder({"resultado": encartes.GRANDE_DEMAIS})
+    corpo = await request.body()
+    if len(corpo) > LIMITE_WEBHOOK_ENCARTES:
+        log.info("webhook de encartes: %s", encartes.GRANDE_DEMAIS)
+        return responder({"resultado": encartes.GRANDE_DEMAIS})
+    try:
+        payload = json.loads(corpo)
+    except ValueError:
+        log.info("webhook de encartes: %s", encartes.MALFORMADO)
+        return responder({"resultado": encartes.MALFORMADO})
+
+    try:
+        resultado = encartes.processar_webhook(
+            con, payload, cfg.pasta_encartes, datetime.now(encartes.FUSO)
+        )
+    except Exception:
+        log.exception("webhook de encartes: falha ao guardar; a Evolution vai reenviar")
+        raise
+    return responder({"resultado": resultado})
 
 
 # ── a PWA ────────────────────────────────────────────────────────────────────

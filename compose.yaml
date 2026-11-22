@@ -18,6 +18,7 @@ services:
       - RAIO_KM=${RAIO_KM:-15}
       - TETO_CONSULTAS_HORA=${TETO_CONSULTAS_HORA:-50}
       - MORADORES=${MORADORES}
+      - ENCARTE_WEBHOOK_SEGREDO=${ENCARTE_WEBHOOK_SEGREDO:-}
     volumes:
       - /mnt/data/mise-en-prato:/dados
       - /var/run/tailscale/tailscaled.sock:/var/run/tailscale/tailscaled.sock:ro
