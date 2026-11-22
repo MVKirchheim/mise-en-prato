@@ -50,6 +50,12 @@ class Config(BaseSettings):
     # Desligar SÓ para desenvolver no host, onde não há tailnet na frente.
     exigir_tailnet: bool = True
 
+    # ── encartes de mercado ──────────────────────────────────────────────────
+    # O segredo que a Evolution API manda no cabeçalho X-Webhook-Segredo. Vazio,
+    # o webhook fica desligado: ele recebe todas as mensagens do WhatsApp, e
+    # não pode ficar aberto por esquecimento.
+    encarte_webhook_segredo: str = ""
+
     @property
     def banco(self) -> Path:
         return self.dados / "mise_en_prato.db"
@@ -70,6 +76,11 @@ class Config(BaseSettings):
     @property
     def pasta_fotos_receitas(self) -> Path:
         return self.dados / "receitas" / "fotos"
+
+    @property
+    def pasta_encartes(self) -> Path:
+        """As imagens dos encartes, uma pasta por dia de recebimento."""
+        return self.dados / "encartes"
 
     @property
     def mapa_moradores(self) -> dict[str, str]:
