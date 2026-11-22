@@ -62,7 +62,7 @@
     let html = `<button type="button" class="chip-sabor ${!categoriaAtiva ? 'ativo' : ''}" onclick="filtrarCategoria('')">Todas</button>`;
     categoriasDisponiveis.forEach((cat) => {
       const ativa = categoriaAtiva === cat ? 'ativo' : '';
-      html += `<button type="button" class="chip-sabor ${ativa}" onclick="filtrarCategoria('${cat.replace(/'/g, "\\'")}')">${cat}</button>`;
+      html += `<button type="button" class="chip-sabor ${ativa}" data-categoria="${escapar(cat)}" onclick="filtrarCategoria(this.dataset.categoria)">${escapar(cat)}</button>`;
     });
     conteiner.innerHTML = html;
   }
@@ -89,30 +89,30 @@
     grade.innerHTML = todasReceitas
       .map((r) => {
         const fotoHtml = r.foto_caminho
-          ? `<img src="/api/receitas/${r.id}/foto" alt="${r.nome}" class="card-receita-img" loading="lazy">`
+          ? `<img src="/api/receitas/${Number(r.id)}/foto" alt="${escapar(r.nome)}" class="card-receita-img" loading="lazy">`
           : `<div class="card-receita-sem-foto">🥘</div>`;
 
-        const tempoHtml = r.tempo_preparo_min ? `<span>⏱️ ${r.tempo_preparo_min} min</span>` : '';
-        const porcoesHtml = r.porcoes ? `<span>👥 ${r.porcoes} porções</span>` : '';
-        const catHtml = r.categoria ? `<span class="badge-categoria">${r.categoria}</span>` : '';
+        const tempoHtml = r.tempo_preparo_min ? `<span>⏱️ ${escapar(r.tempo_preparo_min)} min</span>` : '';
+        const porcoesHtml = r.porcoes ? `<span>👥 ${escapar(r.porcoes)} porções</span>` : '';
+        const catHtml = r.categoria ? `<span class="badge-categoria">${escapar(r.categoria)}</span>` : '';
 
         return `
-        <article class="card-receita" onclick="abrirModoCozinha(${r.id})">
+        <article class="card-receita" onclick="abrirModoCozinha(${Number(r.id)})">
           <div class="card-receita-capa">
             ${fotoHtml}
             ${catHtml}
           </div>
           <div class="card-receita-corpo">
-            <h3 class="card-receita-titulo">${r.nome}</h3>
+            <h3 class="card-receita-titulo">${escapar(r.nome)}</h3>
             <div class="card-receita-meta fraca">
               ${tempoHtml}
               ${porcoesHtml}
-              <span>🥗 ${r.qtd_ingredientes} itens</span>
+              <span>🥗 ${escapar(r.qtd_ingredientes)} itens</span>
             </div>
           </div>
           <div class="card-receita-rodape" onclick="event.stopPropagation()">
-            <button type="button" class="btn-acao-card" onclick="abrirModalEditarReceita(${r.id})" title="Editar">✏️ Editar</button>
-            <button type="button" class="btn-acao-card ruim" onclick="confirmarExcluirReceita(${r.id}, '${r.nome.replace(/'/g, "\\'")}')" title="Excluir">🗑️ Excluir</button>
+            <button type="button" class="btn-acao-card" onclick="abrirModalEditarReceita(${Number(r.id)})" title="Editar">✏️ Editar</button>
+            <button type="button" class="btn-acao-card ruim" data-nome="${escapar(r.nome)}" onclick="confirmarExcluirReceita(${Number(r.id)}, this.dataset.nome)" title="Excluir">🗑️ Excluir</button>
           </div>
         </article>`;
       })
@@ -154,7 +154,7 @@
             .split(/\n+/)
             .map((p) => p.trim())
             .filter(Boolean);
-          instrucoesEl.innerHTML = passos.map((p, idx) => `<p><strong>Passo ${idx + 1}:</strong> ${p}</p>`).join('');
+          instrucoesEl.innerHTML = passos.map((p, idx) => `<p><strong>Passo ${idx + 1}:</strong> ${escapar(p)}</p>`).join('');
         } else {
           instrucoesEl.innerHTML = '<p class="fraca">Nenhuma instrução detalhada cadastrada para esta receita.</p>';
         }
@@ -225,10 +225,10 @@
         const unidadeTexto = ing.unidade && ing.unidade !== 'unidade' ? ing.unidade : '';
 
         return `
-        <label class="item-mise-en-place ${checadoCls}" onclick="toggleChecklistIngrediente(${ing.id})">
-          <input type="checkbox" ${checked} onclick="event.stopPropagation(); toggleChecklistIngrediente(${ing.id})">
-          <span class="nome-ingrediente">${ing.nome_ingrediente}</span>
-          <span class="qtd-ingrediente">${qtdFormatada} ${unidadeTexto}</span>
+        <label class="item-mise-en-place ${checadoCls}" onclick="toggleChecklistIngrediente(${Number(ing.id)})">
+          <input type="checkbox" ${checked} onclick="event.stopPropagation(); toggleChecklistIngrediente(${Number(ing.id)})">
+          <span class="nome-ingrediente">${escapar(ing.nome_ingrediente)}</span>
+          <span class="qtd-ingrediente">${escapar(qtdFormatada)} ${escapar(unidadeTexto)}</span>
         </label>`;
       })
       .join('');
@@ -261,8 +261,8 @@
           const detalhe = [qtdFormatada, unidTexto].filter(Boolean).join(' ');
           return `
           <label style="display:flex;align-items:center;gap:.6rem;cursor:pointer;padding:.3rem 0">
-            <input type="checkbox" class="chk-enviar-ingrediente" value="${ing.id}" checked>
-            <span><strong>${ing.nome_ingrediente}</strong> ${detalhe ? `(${detalhe})` : ''}</span>
+            <input type="checkbox" class="chk-enviar-ingrediente" value="${escapar(ing.id)}" checked>
+            <span><strong>${escapar(ing.nome_ingrediente)}</strong> ${detalhe ? `(${escapar(detalhe)})` : ''}</span>
           </label>`;
         })
         .join('');
@@ -276,7 +276,7 @@
       const resp = await api('/api/listas');
       const listas = resp.listas || [];
       listas.forEach((l) => {
-        selectListas.innerHTML += `<option value="${l.id}">Adicionar à lista: "${l.nome}" (${l.itens || 0} itens)</option>`;
+        selectListas.innerHTML += `<option value="${escapar(l.id)}">Adicionar à lista: "${escapar(l.nome)}" (${escapar(l.itens || 0)} itens)</option>`;
       });
     } catch (err) {
       console.warn('Erro ao carregar listas existentes:', err);
@@ -390,7 +390,7 @@
   function atualizarDatalistCategorias() {
     const dl = $('#lista-sugestoes-categorias');
     if (!dl) return;
-    dl.innerHTML = categoriasDisponiveis.map((c) => `<option value="${c}">`).join('');
+    dl.innerHTML = categoriasDisponiveis.map((c) => `<option value="${escapar(c)}">`).join('');
   }
 
   window.fecharModalReceita = function () {
@@ -404,10 +404,10 @@
     const row = document.createElement('div');
     row.className = 'linha-ingrediente-form';
     row.innerHTML = `
-      <input type="text" class="campo-ing-qtd" placeholder="Qtd" value="${qtd}" style="width:4.8rem" required>
-      <input type="text" class="campo-ing-unid" placeholder="Unid" value="${unid}" style="width:5.4rem" list="sugestoes-unidades" required>
-      <input type="text" class="campo-ing-nome" placeholder="Nome do ingrediente" value="${nome}" style="flex:1" required>
-      <input type="hidden" class="campo-ing-gtin" value="${gtin || ''}">
+      <input type="text" class="campo-ing-qtd" placeholder="Qtd" value="${escapar(qtd)}" style="width:4.8rem" required>
+      <input type="text" class="campo-ing-unid" placeholder="Unid" value="${escapar(unid)}" style="width:5.4rem" list="sugestoes-unidades" required>
+      <input type="text" class="campo-ing-nome" placeholder="Nome do ingrediente" value="${escapar(nome)}" style="flex:1" required>
+      <input type="hidden" class="campo-ing-gtin" value="${escapar(gtin || '')}">
       <button type="button" class="btn-remover-linha" onclick="this.parentElement.remove()" title="Remover">✕</button>
     `;
     container.appendChild(row);
