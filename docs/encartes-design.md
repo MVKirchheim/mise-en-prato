@@ -84,15 +84,17 @@ Todo modelo do Gemini respondeu 503 ("high demand") na primeira tentativa, e nen
 A Evolution manda só o evento `messages.upsert`, com `webhookBase64` ativo. O fluxo para no primeiro "não":
 
 1. `APP_MODE=demo`: responde 403.
-2. Segredo `ENCARTE_WEBHOOK_SEGREDO`, comparado em tempo constante. Se a Evolution v2 não aceitar cabeçalho personalizado no webhook, o segredo vai no caminho da URL. A rota fica fora da autenticação de morador.
-3. O `remoteJid` precisa terminar em `@g.us` e ser uma fonte ativa. Se não for, responde 200 sem gravar nada. **Modo descoberta:** enquanto não houver nenhuma fonte cadastrada, registra no log só o `jid` e o nome de quem mandou.
+2. Segredo `ENCARTE_WEBHOOK_SEGREDO`, enviado pela Evolution no cabeçalho `X-Webhook-Segredo` (campo `headers` do webhook) e comparado em tempo constante. Errado ou ausente, responde 401. Vazio na configuração, responde 403. A rota fica fora da autenticação de morador.
+3. O `remoteJid` precisa terminar em `@g.us` e ser uma fonte ativa. Se não for, responde 200 sem gravar nada. **Modo descoberta:** imagem de grupo desconhecido grava só o `jid`, as datas e um contador em `encarte_grupo_visto`, sem nome, legenda ou remetente, e o log não registra nada que a identifique. O comando `python -m mise_en_prato.encartes grupos` lista esses grupos.
 4. Só `imageMessage`. O resto recebe 200 e é descartado.
 5. `mensagem_id` ou `sha256` repetido na fonte: responde 200 sem gravar.
 6. No máximo 10 MB, e o Pillow precisa abrir o arquivo como JPEG, PNG ou WebP.
 7. Salva em `/dados/encartes/<data>/<sha256>.<ext>`, cria o `encarte` como `pendente` (com a legenda) e sinaliza o `asyncio.Event` do laço.
 8. Responde 200 sem chamar o leitor.
 
-Os descartes respondem 200 para a Evolution não reenviar. A rota só é acessível pela rede Docker interna.
+Os descartes respondem 200 para a Evolution não reenviar. Falha de banco ou de disco responde 5xx, e a Evolution reenvia sozinha (até 10 vezes, com espera crescente até 5 min). Por isso, um deploy rápido não perde encarte.
+
+A mesma arte recebida por duas lojas da rede no mesmo dia gera duas linhas `encarte` apontando para **o mesmo arquivo** (o nome é o hash). A limpeza de 7 dias (fatia 2) só pode apagar um arquivo quando nenhuma linha ainda o usa.
 
 ### 5.3 Leitor: `encartes/leitor.py`
 
@@ -162,8 +164,9 @@ Os descartes respondem 200 para a Evolution não reenviar. A rota só é acessí
 
 ## 7. A verificar na implementação
 
-- Se a Evolution v2 manda cabeçalhos personalizados no webhook, e o formato exato de `messages.upsert` com `webhookBase64`, incluindo o `remoteJid` do canal de avisos de uma comunidade.
-- Se a Evolution v2 exige banco próprio, e quais opções desligam a gravação de mensagens.
+- ~~Se a Evolution v2 manda cabeçalhos personalizados no webhook~~: manda (campo `headers`). O base64 chega em `data.message.base64` com `base64: true`. Lido no código-fonte da v2.3.x.
+- Se o canal de avisos de uma comunidade chega com o próprio `@g.us`. Vai ser confirmado com a tabela de descoberta.
+- A Evolution v2 exige banco próprio (Prisma, Postgres ou MySQL). As opções `DATABASE_SAVE_DATA_NEW_MESSAGE`, `_CONTACTS`, `_CHATS`, `_HISTORIC`, `_LABELS` e `DATABASE_SAVE_MESSAGE_UPDATE` ficam em `false`. O Redis é opcional.
 - Os limites atuais do plano gratuito para `gemini-flash-lite-latest` no AI Studio.
 - Se 6 itens cabem no menu inferior em telas de 360 px.
 
