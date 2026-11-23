@@ -1,0 +1,35 @@
+{
+  "candidates": [
+    {
+      "content": {
+        "parts": [
+          {
+            "text": "{\n  \"mercado\": \"Lar Supermercados\",\n  \"validade_inicio\": \"2026-11-21\",\n  \"validade_fim\": \"2026-11-21\",\n  \"observacoes\": null,\n  \"ofertas\": [\n    {\n      \"produto\": \"Miolo da Alcatra Bovino\",\n      \"preco_normal\": 59.90,\n      \"preco_clube\": 56.90,\n      \"unidade\": \"kg\",\n      \"embalagem\": null,\n      \"condicao\": null\n    },\n    {\n      \"produto\": \"Bacon em Cubos Friella\",\n      \"preco_normal\": 30.90,\n      \"preco_clube\": 24.90,\n      \"unidade\": \"un\",\n      \"embalagem\": \"1kg\",\n      \"condicao\": null\n    },\n    {\n      \"produto\": \"Panceta Suína Lar\",\n      \"preco_normal\": 26.97,\n      \"preco_clube\": 19.99,\n      \"unidade\": \"kg\",\n      \"embalagem\": null,\n      \"condicao\": null\n    },\n    {\n      \"produto\": \"Linguiça de Frango Grossa Lar Congelada\",\n      \"preco_normal\": 13.99,\n      \"preco_clube\": 9.99,\n      \"unidade\": \"un\",\n      \"embalagem\": \"700g\",\n      \"condicao\": null\n    },\n    {\n      \"produto\": \"Palmito Palmeira Real Angá em Rodelas\",\n      \"preco_normal\": 12.99,\n      \"preco_clube\": 9.99,\n      \"unidade\": \"un\",\n      \"embalagem\": \"300g\",\n      \"condicao\": null\n    },\n    {\n      \"produto\": \"Molho Tradicional Quero Sachê\",\n      \"preco_normal\": 2.19,\n      \"preco_clube\": 1.49,\n      \"unidade\": \"un\",\n      \"embalagem\": \"240g\",\n      \"condicao\": null\n    },\n    {\n      \"produto\": \"Batata D'Hora Lisa\",\n      \"preco_normal\": 12.79,\n      \"preco_clube\": 9.99,\n      \"unidade\": \"un\",\n      \"embalagem\": \"150g\",\n      \"condicao\": null\n    },\n    {\n      \"produto\": \"Biscoito Águia Salt Plus\",\n      \"preco_normal\": 7.99,\n      \"preco_clube\": 6.99,\n      \"unidade\": \"un\",\n      \"embalagem\": \"360g\",\n      \"condicao\": null\n    },\n    {\n      \"produto\": \"Chocolate Arcor\",\n      \"preco_normal\": 6.98,\n      \"preco_clube\": 5.99,\n      \"unidade\": \"un\",\n      \"embalagem\": \"80g\",\n      \"condicao\": null\n    },\n    {\n      \"produto\": \"Wafer Bauducco\",\n      \"preco_normal\": 3.99,\n      \"preco_clube\": 2.99,\n      \"unidade\": \"un\",\n      \"embalagem\": \"140g\",\n      \"condicao\": null\n    },\n    {\n      \"produto\": \"Suco Fruitz Laranja Adoçado\",\n      \"preco_normal\": 15.99,\n      \"preco_clube\": 12.99,\n      \"unidade\": \"un\",\n      \"embalagem\": \"1,5 Litros\",\n      \"condicao\": null\n    },\n    {\n      \"produto\": \"Cerveja Sol Premium\",\n      \"preco_normal\": 5.79,\n      \"preco_clube\": 5.49,\n      \"unidade\": \"un\",\n      \"embalagem\": \"330ml\",\n      \"condicao\": null\n    }\n  ]\n}",
+            "thoughtSignature": "EpYBCpMBAWkUfROfAZR8BZbtBdEJ0K772Dm+xQtKA9P33MnCLWBniDYvbRDsgs83Oqixtdi13TFDEQdkDY4qkt3M8OwkXmJBSFmF4J0NXJZ1O7r9RDyNKoZcJm6lg7GoE7lIfDhDznHkvp6KF10XmKFMO8obOiDr8duCqEH8syVT2zxp5oI8ki4DoDwIJuvUflNl6/e9bZoo"
+          }
+        ],
+        "role": "model"
+      },
+      "finishReason": "STOP",
+      "index": 0
+    }
+  ],
+  "usageMetadata": {
+    "promptTokenCount": 1666,
+    "candidatesTokenCount": 975,
+    "totalTokenCount": 2641,
+    "promptTokensDetails": [
+      {
+        "modality": "IMAGE",
+        "tokenCount": 1100
+      },
+      {
+        "modality": "TEXT",
+        "tokenCount": 566
+      }
+    ],
+    "serviceTier": "standard"
+  },
+  "modelVersion": "gemini-3.5-flash-lite",
+  "responseId": "gq8Ea7mzB6PckPIP4-fvkQ4"
+}

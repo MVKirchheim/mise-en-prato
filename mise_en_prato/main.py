@@ -22,6 +22,7 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Annotated
 
+import httpx
 from fastapi import Depends, FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -54,6 +55,8 @@ from .consulta_chave import (
     interpretar_resposta,
 )
 from .identidade import NaoIdentificado, quem_e
+from .leitor_encartes import TEMPO_LIMITE as TEMPO_LIMITE_GEMINI
+from .leitor_encartes import LeitorGemini
 from .nfce_pr import (
     Cupom,
     ErroSefaz,
@@ -145,13 +148,34 @@ async def ciclo_de_vida(app: FastAPI):
     # No demo não sobe: o banco é estático (demo.db, regravado a cada deploy) e
     # o demo não grava arquivo nenhum — backup ali seria só disco gasto.
     app.state.tarefas = []
+    # O evento existe sempre, porque o webhook o sinaliza; quem escuta é o laço
+    # de encartes, que só sobe fora do demo e com a chave do Gemini.
+    app.state.evento_encartes = asyncio.Event()
+    cliente_gemini = None
     if cfg.app_mode != "demo":
         app.state.tarefas.append(
             asyncio.create_task(tarefas.laco_de_backup(app.state.con, cfg.pasta_backups))
         )
+        if cfg.gemini_api_key:
+            cliente_gemini = httpx.AsyncClient(timeout=TEMPO_LIMITE_GEMINI)
+            leitor = LeitorGemini(cfg.gemini_api_key, cfg.encarte_modelo, cliente_gemini)
+            app.state.tarefas.append(
+                asyncio.create_task(
+                    tarefas.laco_de_encartes(
+                        app.state.con, leitor, cfg.pasta_encartes, app.state.evento_encartes
+                    ),
+                    name="laco_de_encartes",
+                )
+            )
+        else:
+            log.warning("GEMINI_API_KEY vazia: os encartes chegam e ficam pendentes, sem leitura")
     yield
     for tarefa in app.state.tarefas:
         tarefa.cancel()
+    # Espera os laços saírem antes de fechar o cliente e o banco que eles usam.
+    await asyncio.gather(*app.state.tarefas, return_exceptions=True)
+    if cliente_gemini is not None:
+        await cliente_gemini.aclose()
     app.state.con.close()
 
 
@@ -2084,6 +2108,8 @@ async def webhook_encartes(request: Request, con: Banco):
     except Exception:
         log.exception("webhook de encartes: falha ao guardar; a Evolution vai reenviar")
         raise
+    if resultado == encartes.GUARDADO:
+        request.app.state.evento_encartes.set()
     return responder({"resultado": resultado})
 
 

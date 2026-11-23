@@ -55,6 +55,10 @@ class Config(BaseSettings):
     # o webhook fica desligado: ele recebe todas as mensagens do WhatsApp, e
     # não pode ficar aberto por esquecimento.
     encarte_webhook_segredo: str = ""
+    # A chave do Gemini que lê as imagens. Vazia, os encartes chegam e ficam
+    # pendentes: o laço de leitura não sobe.
+    gemini_api_key: str = ""
+    encarte_modelo: str = "gemini-flash-lite-latest"
 
     @property
     def banco(self) -> Path:

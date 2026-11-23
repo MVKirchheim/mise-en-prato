@@ -19,6 +19,8 @@ services:
       - TETO_CONSULTAS_HORA=${TETO_CONSULTAS_HORA:-50}
       - MORADORES=${MORADORES}
       - ENCARTE_WEBHOOK_SEGREDO=${ENCARTE_WEBHOOK_SEGREDO:-}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - ENCARTE_MODELO=${ENCARTE_MODELO:-gemini-flash-lite-latest}
     volumes:
       - /mnt/data/mise-en-prato:/dados
       - /var/run/tailscale/tailscaled.sock:/var/run/tailscale/tailscaled.sock:ro

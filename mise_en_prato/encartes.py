@@ -9,8 +9,9 @@ exceção é o modo descoberta: grupo desconhecido que manda imagem deixa o jid,
 as datas e um contador em `encarte_grupo_visto`, para dar para cadastrar a
 comunidade nova sem ligar log de conversa.
 
-Ler a imagem fica para o laço de fundo (fatia 2); aqui nada chama o leitor,
-e o webhook responde em milissegundos.
+Ler a imagem fica para o laço de fundo (`processar_proximo`, chamado pelo
+laço em tarefas.py); o webhook não chama o leitor e responde em
+milissegundos. A limpeza das imagens com mais de 7 dias também mora aqui.
 
 Cada descarte devolve um código curto, que vai para o log e para os testes.
 Nenhum descarte é erro: a Evolution só reenvia o que falhou com 5xx, e uma
@@ -26,16 +27,27 @@ import base64
 import binascii
 import hashlib
 import io
+import json
 import logging
 import os
 import sqlite3
 import tempfile
-from datetime import datetime
+import unicodedata
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
 from PIL import Image
+
+from .banco import centavos
+from .leitor_encartes import (
+    ErroPermanente,
+    ErroTemporario,
+    Leitor,
+    LeituraEncarte,
+    RespostaInvalida,
+)
 
 log = logging.getLogger("mise_en_prato.encartes")
 
@@ -272,6 +284,305 @@ def _processar(
             alvo.unlink(missing_ok=True)
         raise
     return GUARDADO, nome, encarte_id
+
+
+# ── leitura dos pendentes ────────────────────────────────────────────────────
+# Esperas depois de cada erro temporário: 1, 5, 15 e 60 min, e então de hora
+# em hora. Na 8ª tentativa sem sucesso, o encarte desiste e vira `falhou`.
+ESPERAS_MIN = (1, 5, 15, 60)
+LIMITE_TENTATIVAS = 8
+# O texto do `erro` marca a resposta inválida: duas seguidas e desiste.
+PREFIXO_RESPOSTA_INVALIDA = "resposta inválida"
+
+PRECO_MINIMO = 10  # centavos: abaixo de R$ 0,10 é leitura errada
+PRECO_MAXIMO = 200_000  # centavos: acima de R$ 2.000 também
+
+AVISO_CLUBE_MAIOR = "preço de clube maior que o normal"
+AVISO_PRECO_BAIXO = "preço abaixo de R$ 0,10"
+AVISO_PRECO_ALTO = "preço acima de R$ 2.000"
+AVISO_SEM_NOME = "produto sem nome"
+AVISO_SEM_VALIDADE = "validade não encontrada"
+AVISO_VENCIDO = "vencido ao chegar"
+SEM_NOME = "(sem nome)"
+
+
+def _espera(tentativas: int) -> timedelta:
+    """A espera depois da n-ésima tentativa falha (n começa em 1)."""
+    return timedelta(minutes=ESPERAS_MIN[min(tentativas, len(ESPERAS_MIN)) - 1])
+
+
+def _json_ou_nulo(avisos: list[str]) -> str | None:
+    return json.dumps(avisos, ensure_ascii=False) if avisos else None
+
+
+def normalizar_produto(produto: str) -> str:
+    """Minúsculas, sem acento, espaço colapsado: a parte do produto na chave_dedupe."""
+    sem_acento = unicodedata.normalize("NFKD", produto)
+    sem_acento = "".join(c for c in sem_acento if not unicodedata.combining(c))
+    return " ".join(sem_acento.lower().split())
+
+
+def _avisos_de_preco(normal: int, clube: int | None) -> list[str]:
+    avisos = []
+    if clube is not None and clube > normal:
+        avisos.append(AVISO_CLUBE_MAIOR)
+    precos = [p for p in (normal, clube) if p is not None]
+    if any(p < PRECO_MINIMO for p in precos):
+        avisos.append(AVISO_PRECO_BAIXO)
+    if any(p > PRECO_MAXIMO for p in precos):
+        avisos.append(AVISO_PRECO_ALTO)
+    return avisos
+
+
+def _pendente_da_vez(con: sqlite3.Connection, agora: datetime) -> sqlite3.Row | None:
+    return con.execute(
+        """SELECT id, fonte_id, recebido_em, legenda, arquivo, mime, tentativas, erro
+             FROM encarte
+            WHERE status = 'pendente'
+              AND (proxima_tentativa_em IS NULL OR proxima_tentativa_em <= ?)
+            ORDER BY recebido_em, id
+            LIMIT 1""",
+        (_iso(agora),),
+    ).fetchone()
+
+
+def _gravar_falha(
+    con: sqlite3.Connection,
+    encarte: sqlite3.Row,
+    agora: datetime,
+    erro: str,
+    *,
+    temporaria: bool,
+    contar: bool = True,
+) -> None:
+    tentativas = encarte["tentativas"] + (1 if contar else 0)
+    if temporaria and tentativas < LIMITE_TENTATIVAS:
+        status, proxima = "pendente", _iso(agora + _espera(tentativas))
+    else:
+        status, proxima = "falhou", None
+    con.execute(
+        """UPDATE encarte SET status = ?, tentativas = ?, proxima_tentativa_em = ?, erro = ?
+            WHERE id = ?""",
+        (status, tentativas, proxima, erro, encarte["id"]),
+    )
+    con.commit()
+    log.info("encarte %d: %s na tentativa %d (%s)", encarte["id"], status, tentativas, erro)
+
+
+def _validade(leitura: LeituraEncarte, dia: date) -> tuple[date, date, list[str]]:
+    """A validade do encarte, completada com o dia do recebimento, e os avisos dela."""
+    avisos = []
+    inicio, fim = leitura.validade_inicio, leitura.validade_fim
+    if inicio is None or fim is None:
+        avisos.append(AVISO_SEM_VALIDADE)
+    # O que faltar é o dia do recebimento, sem inverter o intervalo: um encarte
+    # que só diz "a partir de sexta" vale de sexta a sexta, não de hoje a sexta.
+    if inicio is None:
+        inicio = min(dia, fim) if fim is not None else dia
+    if fim is None:
+        fim = max(dia, inicio)
+    if fim < dia:
+        avisos.append(AVISO_VENCIDO)
+    return inicio, fim, avisos
+
+
+def _gravar_leitura(
+    con: sqlite3.Connection, encarte: sqlite3.Row, leitura: LeituraEncarte, nome_leitor: str
+) -> tuple[str, int, int]:
+    """Grava ofertas e encarte numa transação só. Devolve (status, válidas, novas)."""
+    dia = datetime.fromisoformat(encarte["recebido_em"]).astimezone(FUSO).date()
+    inicio, fim, avisos_encarte = _validade(leitura, dia)
+
+    linhas = []
+    descartadas = 0
+    for lida in leitura.ofertas:
+        normal, clube = centavos(lida.preco_normal), centavos(lida.preco_clube)
+        if normal is None:
+            # Um preço só, lido como de clube: é o preço da oferta.
+            normal, clube = clube, None
+        if normal is None:
+            descartadas += 1
+            continue
+        avisos = _avisos_de_preco(normal, clube)
+        produto = lida.produto
+        if not produto:
+            avisos.append(AVISO_SEM_NOME)
+            produto = SEM_NOME
+        chave = "|".join(
+            (
+                normalizar_produto(produto),
+                str(normal),
+                "" if clube is None else str(clube),
+                inicio.isoformat(),
+                fim.isoformat(),
+            )
+        )
+        linhas.append(
+            (
+                encarte["id"],
+                encarte["fonte_id"],
+                produto,
+                lida.embalagem,
+                lida.unidade,
+                normal,
+                clube,
+                lida.condicao,
+                inicio.isoformat(),
+                fim.isoformat(),
+                _json_ou_nulo(avisos),
+                chave,
+            )
+        )
+
+    if descartadas:
+        avisos_encarte.append(
+            "1 oferta sem preço descartada"
+            if descartadas == 1
+            else f"{descartadas} ofertas sem preço descartadas"
+        )
+    if linhas:
+        status = "lido"
+    else:
+        # Imagem sem oferta (aviso de horário, arte institucional): a falta de
+        # validade ali não é notícia. Só o descarte, se houve, fica registrado.
+        status = "sem_ofertas"
+        avisos_encarte = [a for a in avisos_encarte if a not in (AVISO_SEM_VALIDADE, AVISO_VENCIDO)]
+
+    try:
+        novas = 0
+        for linha in linhas:
+            novas += con.execute(
+                """INSERT OR IGNORE INTO oferta
+                       (encarte_id, fonte_id, produto, embalagem, unidade,
+                        preco_normal_centavos, preco_clube_centavos, condicao,
+                        validade_inicio, validade_fim, avisos, chave_dedupe)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                linha,
+            ).rowcount
+        con.execute(
+            """UPDATE encarte
+                  SET status = ?, tentativas = ?, proxima_tentativa_em = NULL, erro = NULL,
+                      leitor = ?, validade_inicio = ?, validade_fim = ?, observacoes = ?,
+                      avisos = ?
+                WHERE id = ?""",
+            (
+                status,
+                encarte["tentativas"] + 1,
+                nome_leitor,
+                inicio.isoformat(),
+                fim.isoformat(),
+                leitura.observacoes,
+                _json_ou_nulo(avisos_encarte),
+                encarte["id"],
+            ),
+        )
+        con.commit()
+    except BaseException:
+        con.rollback()
+        raise
+    return status, len(linhas), novas
+
+
+async def processar_proximo(
+    con: sqlite3.Connection, leitor: Leitor, agora: datetime, pasta: Path
+) -> int | None:
+    """Lê o pendente mais antigo que já pode ser tentado. Devolve o id, ou None.
+
+    `pasta` é a de encartes (config().pasta_encartes), como no webhook: o
+    `arquivo` gravado é relativo à pasta-mãe dela.
+
+    Nenhuma transação fica aberta durante a leitura, que leva dezenas de
+    segundos: lê a linha e o arquivo, solta, chama o leitor e só então grava.
+    """
+    encarte = _pendente_da_vez(con, agora)
+    if encarte is None:
+        return None
+
+    imagem = None
+    if encarte["arquivo"]:
+        try:
+            imagem = (pasta.parent / encarte["arquivo"]).read_bytes()
+        except FileNotFoundError:
+            pass
+    if imagem is None:
+        _gravar_falha(con, encarte, agora, "imagem não encontrada", temporaria=False, contar=False)
+        return encarte["id"]
+
+    try:
+        leitura = await leitor.ler(imagem, encarte["mime"] or "image/jpeg", encarte["legenda"])
+    except ErroPermanente as erro:
+        _gravar_falha(con, encarte, agora, str(erro), temporaria=False)
+    except RespostaInvalida as erro:
+        anterior = encarte["erro"] or ""
+        _gravar_falha(
+            con,
+            encarte,
+            agora,
+            f"{PREFIXO_RESPOSTA_INVALIDA}: {erro}",
+            temporaria=not anterior.startswith(PREFIXO_RESPOSTA_INVALIDA),
+        )
+    except ErroTemporario as erro:
+        _gravar_falha(con, encarte, agora, str(erro), temporaria=True)
+    except Exception as erro:
+        # Bug do leitor não pode travar a fila nem vazar a resposta no log: só
+        # o tipo, e conta como tentativa temporária.
+        _gravar_falha(
+            con, encarte, agora, f"erro inesperado ({type(erro).__name__})", temporaria=True
+        )
+    else:
+        status, validas, novas = _gravar_leitura(con, encarte, leitura, leitor.nome)
+        log.info("encarte %d: %s, %d ofertas (%d novas)", encarte["id"], status, validas, novas)
+    return encarte["id"]
+
+
+# ── limpeza ──────────────────────────────────────────────────────────────────
+def limpar_imagens(con: sqlite3.Connection, pasta: Path, agora: datetime, dias: int = 7) -> int:
+    """Esquece as imagens já tratadas com mais de `dias` e apaga as que ninguém usa.
+
+    As ofertas ficam: só a imagem some. A mesma arte de duas lojas divide o
+    arquivo, então ele só é apagado quando nenhuma linha (nem a pendente da
+    outra loja) ainda aponta para ele. Devolve quantos arquivos apagou.
+    """
+    velhos = con.execute(
+        """SELECT id, arquivo FROM encarte
+            WHERE status != 'pendente' AND arquivo IS NOT NULL AND recebido_em < ?""",
+        (_iso(agora - timedelta(days=dias)),),
+    ).fetchall()
+    if not velhos:
+        return 0
+    try:
+        con.executemany(
+            "UPDATE encarte SET arquivo = NULL WHERE id = ?", [(v["id"],) for v in velhos]
+        )
+        con.commit()
+    except BaseException:
+        con.rollback()
+        raise
+
+    raiz = pasta.resolve()
+    apagados = 0
+    for arquivo in sorted({v["arquivo"] for v in velhos}):
+        if con.execute("SELECT 1 FROM encarte WHERE arquivo = ?", (arquivo,)).fetchone():
+            continue
+        alvo = (pasta.parent / arquivo).resolve()
+        if not alvo.is_relative_to(raiz):
+            log.warning("limpeza de encartes: caminho fora da pasta, ignorado")
+            continue
+        try:
+            alvo.unlink()
+            apagados += 1
+        except FileNotFoundError:
+            pass
+        # A pasta do dia vazia vai junto; com outro arquivo dentro, fica.
+        if alvo.parent != raiz:
+            try:
+                alvo.parent.rmdir()
+            except OSError:
+                pass
+    log.info(
+        "limpeza de encartes: %d imagens esquecidas, %d arquivos apagados", len(velhos), apagados
+    )
+    return apagados
 
 
 # ── fontes ───────────────────────────────────────────────────────────────────
