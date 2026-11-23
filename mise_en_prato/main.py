@@ -42,7 +42,7 @@ from . import (
     unificacao,
 )
 from .banco import conectar
-from .config import config
+from .config import ModoDemo, config
 from .consulta_chave import (
     CaptchaRecusado,
     ChaveNaoAchada,
@@ -142,9 +142,13 @@ async def ciclo_de_vida(app: FastAPI):
     cfg.pasta_fotos_receitas.mkdir(parents=True, exist_ok=True)
     app.state.con = conectar(cfg.banco)
     # O backup vive no ciclo de vida do servidor: sobe junto, desce junto.
-    app.state.tarefas = [
-        asyncio.create_task(tarefas.laco_de_backup(app.state.con, cfg.pasta_backups)),
-    ]
+    # No demo não sobe: o banco é estático (demo.db, regravado a cada deploy) e
+    # o demo não grava arquivo nenhum — backup ali seria só disco gasto.
+    app.state.tarefas = []
+    if cfg.app_mode != "demo":
+        app.state.tarefas.append(
+            asyncio.create_task(tarefas.laco_de_backup(app.state.con, cfg.pasta_backups))
+        )
     yield
     for tarefa in app.state.tarefas:
         tarefa.cancel()
@@ -152,6 +156,36 @@ async def ciclo_de_vida(app: FastAPI):
 
 
 app = FastAPI(title="mise_en_prato", default_response_class=RespostaJSON, lifespan=ciclo_de_vida)
+
+# Métodos que não alteram nada. Tudo o mais, sob /api/, é escrita.
+METODOS_SEGUROS = frozenset({"GET", "HEAD", "OPTIONS"})
+
+
+@app.middleware("http")
+async def demo_somente_leitura(request: Request, chamar):
+    """No demo, nenhuma escrita: todo POST/PUT/PATCH/DELETE em /api/ vira 403.
+
+    Uma trava só, na porta, em vez de uma por rota: rota nova já nasce
+    bloqueada. Não há lista de exceções — nenhuma rota de escrita faz falta
+    para navegar no demo. Por responder ANTES da rota, esta mensagem vence as
+    dos guardas de cada rota (`_bloquear_no_demo` e os inline), que ficam como
+    segunda trava e ainda valem para os GET que saem da casa.
+    """
+    if (
+        request.method not in METODOS_SEGUROS
+        and request.url.path.startswith("/api/")
+        and config().app_mode == "demo"
+    ):
+        return RespostaJSON(
+            {"detail": "Alterações desativadas na demonstração pública."}, status_code=403
+        )
+    return await chamar(request)
+
+
+@app.exception_handler(ModoDemo)
+async def demo_virou_403(_request: Request, erro: ModoDemo):
+    """Cliente de rede que se recusou a sair da casa no demo: 403, não 500."""
+    return RespostaJSON({"detail": str(erro)}, status_code=403)
 
 
 @app.exception_handler(menor_preco.TetoAtingido)
@@ -185,6 +219,16 @@ async def morador(request: Request) -> str:
 # argumento funciona, mas é uma armadilha conhecida de Python.
 Banco = Annotated[sqlite3.Connection, Depends(banco)]
 Morador = Annotated[str, Depends(morador)]
+
+
+def _bloquear_no_demo(o_que: str) -> None:
+    """403 no modo demo para o que sai da casa: SEFAZ e Menor Preço.
+
+    O portfólio público não raspa nota real nem consulta a API do estado. Vai
+    no topo da rota, antes de qualquer gravação, sessão de captcha ou rede.
+    """
+    if config().app_mode == "demo":
+        raise HTTPException(403, f"{o_que} desativada na demonstração pública.")
 
 
 # ── envio de cupom ───────────────────────────────────────────────────────────
@@ -258,6 +302,7 @@ def _registrar(con, url: str, quem: str, origem: str) -> dict:
 
 @app.post("/api/cupom")
 async def enviar_cupom(envio: EnvioCupom, quem: Morador, con: Banco):
+    _bloquear_no_demo("Consulta de notas na SEFAZ")
     if envio.url:
         return responder(_registrar(con, envio.url, quem, "qrcode"))
     if envio.chave:
@@ -285,6 +330,7 @@ async def enviar_foto(quem: Morador, con: Banco, foto: Annotated[UploadFile, Fil
        - Centavos fechando: gravado como completo = 1.
        - Divergência: gravado como completo = 0 e direcionado para a fila de revisão.
     """
+    _bloquear_no_demo("Consulta de notas na SEFAZ")
     bruto = await foto.read()
     try:
         achados = ler_qr(bruto)
@@ -467,6 +513,7 @@ def desafio_de_captcha(quem: Morador):
 
     Quem resolve é gente. O mise_en_prato só carrega a imagem até a tela.
     """
+    _bloquear_no_demo("Consulta de notas na SEFAZ")
     _limpar_desafios()
     try:
         desafio = abrir_desafio()
@@ -487,6 +534,7 @@ def enviar_chave(envio: EnvioChave, quem: Morador, con: Banco):
     A chave se confere sozinha, então dígito trocado é recusado ANTES de gastar
     o captcha. E o captcha, uma vez usado, não volta: erro rende desafio novo.
     """
+    _bloquear_no_demo("Consulta de notas na SEFAZ")
     chave = _chave_valida(envio.chave)
     if not envio.reconsultar and (guardado := _ja_guardado(con, chave)):
         return responder(guardado)
@@ -844,13 +892,14 @@ async def tirar_item(lista_id: int, produto_id: int, _: Morador, con: Banco):
 # sleep, e num handler async isso travaria o laço de eventos inteiro. Sendo
 # `def`, o FastAPI a roda numa thread e a PWA continua respondendo.
 @app.post("/api/lista/{lista_id}/pesquisar")
-def pesquisar_precos(lista_id: int, request: Request):
+def pesquisar_precos(lista_id: int, request: Request, _: Morador):
     """Consulta o Menor Preço para os itens da lista. **Só a pedido de gente.**
 
     É a única rota que fala com a API do estado, e ela existe porque alguém
     apertou um botão. Antes do lote vai o canário: se a API estiver servindo
     base de teste, descobrir aqui custa uma consulta em vez do lote inteiro.
     """
+    _bloquear_no_demo("Consulta ao Menor Preço")
     con = request.app.state.con
     cliente = menor_preco.MenorPreco(con)
     relatorio = {"consultados": 0, "guardados": 0, "recusados": [], "sem_resultado": []}
@@ -898,6 +947,7 @@ def status_catalogo(_: Morador):
 @app.get("/api/produto/{produto_id}/candidatos")
 def buscar_candidatos_gtin(produto_id: int, request: Request, _: Morador):
     """Busca no Menor Preço e catálogo os códigos candidatos para um produto ambíguo."""
+    _bloquear_no_demo("Consulta ao Menor Preço")
     con = request.app.state.con
     prod = con.execute("SELECT * FROM produto WHERE id = ?", (produto_id,)).fetchone()
     if not prod:
@@ -1505,6 +1555,7 @@ def desmembrar_produto_variante(
 @app.get("/api/catalogo/ean/{gtin}")
 def buscar_metadados_gtin(gtin: str, _: Morador):
     """Consulta metadados de um GTIN/EAN no catálogo offline ou Open Food Facts."""
+    _bloquear_no_demo("Consulta ao Open Food Facts")
     gtin_limpo = catalogo.normalizar_gtin(gtin)
     if not gtin_limpo or not sanidade.digito_gtin_confere(gtin_limpo):
         raise HTTPException(400, "código de barras (GTIN) inválido")
@@ -1529,12 +1580,13 @@ async def ver_pendentes(_: Morador, con: Banco):
 # Síncrona pelo mesmo motivo da pesquisa de preços: o cliente espaça as
 # consultas com sleep, e num handler async isso travaria o laço de eventos.
 @app.post("/api/enriquecer")
-def enriquecer_produtos(request: Request, quantos: int = 5):
+def enriquecer_produtos(request: Request, _: Morador, quantos: int = 5):
     """Descobre o código de barras dos produtos mais comprados. **A pedido.**
 
     `quantos` é baixo de propósito: cada produto custa uma consulta, e o teto
     por hora é o que mantém esta app do lado certo do termo de uso.
     """
+    _bloquear_no_demo("Consulta ao Menor Preço")
     con = request.app.state.con
     cliente = menor_preco.MenorPreco(con)
     if not cliente.canario():

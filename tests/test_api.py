@@ -140,6 +140,41 @@ def test_fora_da_tailnet_leva_403(tmp_path, monkeypatch):
     config.cache_clear()
 
 
+@pytest.mark.parametrize("caminho", ["/api/lista/1/pesquisar", "/api/enriquecer?quantos=1"])
+def test_consultas_ao_menor_preco_exigem_morador(tmp_path, monkeypatch, caminho):
+    """As duas rotas que gastam o teto do Menor Preço também passam pelo portão."""
+    from mise_en_prato import menor_preco
+    from mise_en_prato.config import config
+
+    def nao_pode(*_args, **_kwargs):
+        raise AssertionError("o Menor Preço foi consultado sem morador")
+
+    monkeypatch.setattr(menor_preco, "MenorPreco", nao_pode)
+    with TestClient(_app(tmp_path, monkeypatch, exigir_tailnet=True)) as c:
+        r = c.post(caminho)
+    config.cache_clear()
+
+    assert r.status_code == 403
+    assert r.json()["detail"] == "testclient não é endereço da tailnet"
+
+
+def test_consultas_ao_menor_preco_seguem_funcionando_para_morador(cliente, monkeypatch):
+    """Com o portão desligado (dev), as duas rotas respondem como antes."""
+    from mise_en_prato import menor_preco
+
+    monkeypatch.setattr(menor_preco.MenorPreco, "canario", lambda self: True)
+    monkeypatch.setattr(menor_preco.MenorPreco, "buscar", lambda self, **_kw: [])
+    lista = cliente.post("/api/listas", json={"nome": "x"}).json()["id"]
+
+    pesquisa = cliente.post(f"/api/lista/{lista}/pesquisar")
+    assert pesquisa.status_code == 200, pesquisa.text
+    assert {"consultados", "guardados", "comparacao"} <= set(pesquisa.json())
+
+    enriquecimento = cliente.post("/api/enriquecer?quantos=1")
+    assert enriquecimento.status_code == 200, enriquecimento.text
+    assert {"identificados", "sem_certeza", "restantes"} <= set(enriquecimento.json())
+
+
 def test_a_pwa_e_servida(cliente):
     assert "mise-en-prato" in cliente.get("/").text
     assert cliente.get("/app.js").status_code == 200

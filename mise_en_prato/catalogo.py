@@ -17,7 +17,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-from .config import config
+from .config import config, recusar_no_demo
 from .nfce_pr import normalizar
 from .sanidade import digito_gtin_confere
 
@@ -85,6 +85,7 @@ def normalizar_gtin(gtin: str) -> str:
 
 def consultar_openfoodfacts_api(gtin: str, timeout: int = 5) -> dict | None:
     """Consulta o Open Food Facts online para um GTIN e devolve dicionário padronizado."""
+    recusar_no_demo("Open Food Facts")
     cod = normalizar_gtin(gtin)
     if not cod or not digito_gtin_confere(cod):
         return None
