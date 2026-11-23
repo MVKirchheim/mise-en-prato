@@ -892,7 +892,7 @@ async def tirar_item(lista_id: int, produto_id: int, _: Morador, con: Banco):
 # sleep, e num handler async isso travaria o laço de eventos inteiro. Sendo
 # `def`, o FastAPI a roda numa thread e a PWA continua respondendo.
 @app.post("/api/lista/{lista_id}/pesquisar")
-def pesquisar_precos(lista_id: int, request: Request):
+def pesquisar_precos(lista_id: int, request: Request, _: Morador):
     """Consulta o Menor Preço para os itens da lista. **Só a pedido de gente.**
 
     É a única rota que fala com a API do estado, e ela existe porque alguém
@@ -1580,7 +1580,7 @@ async def ver_pendentes(_: Morador, con: Banco):
 # Síncrona pelo mesmo motivo da pesquisa de preços: o cliente espaça as
 # consultas com sleep, e num handler async isso travaria o laço de eventos.
 @app.post("/api/enriquecer")
-def enriquecer_produtos(request: Request, quantos: int = 5):
+def enriquecer_produtos(request: Request, _: Morador, quantos: int = 5):
     """Descobre o código de barras dos produtos mais comprados. **A pedido.**
 
     `quantos` é baixo de propósito: cada produto custa uma consulta, e o teto
