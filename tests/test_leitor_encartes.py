@@ -146,7 +146,7 @@ def test_ofertas_nulas_viram_lista_vazia():
 
 
 # ── leitor: erros de HTTP e rede ─────────────────────────────────────────────
-@pytest.mark.parametrize("status", [429, 500, 502, 503, 504])
+@pytest.mark.parametrize("status", [408, 429, 500, 502, 503, 504])
 async def test_status_temporarios(status):
     leitor = _leitor(httpx.Response(status, json={"error": {"message": "x"}}))
     with pytest.raises(ErroTemporario, match=f"HTTP {status}"):
@@ -169,11 +169,14 @@ async def test_erro_de_rede_e_temporario():
 
 @pytest.mark.parametrize("status", [400, 403, 404])
 async def test_chave_invalida_e_permanente(status):
-    corpo = {"error": {"code": status, "message": "API key not valid", "status": "INVALID"}}
+    # O corpo de erro do Google repete a chave recebida: ela não pode subir.
+    corpo = {"error": {"code": status, "message": f"API key not valid: {CHAVE}"}}
     leitor = _leitor(httpx.Response(status, json=corpo))
     with pytest.raises(ErroPermanente, match=f"HTTP {status}") as erro:
         await _ler(leitor)
     assert CHAVE not in str(erro.value)
+    assert CHAVE not in repr(erro.value)
+    assert erro.value.__cause__ is None and erro.value.__context__ is None
 
 
 async def test_pedido_bloqueado_e_permanente():
@@ -864,3 +867,121 @@ def test_webhook_guardado_sinaliza_o_evento(tmp_path, monkeypatch):
         assert not evento.is_set()
         assert _enviar(c, _payload(), segredo=SEGREDO).json() == {"resultado": "guardado"}
         assert evento.is_set()
+
+
+# ── robustez: nada trava a fila ──────────────────────────────────────────────
+@pytest.mark.parametrize(
+    "valor",
+    ["NaN", float("nan"), "Infinity", float("inf"), -5, "-1,00", 1e30, 10**400, 1_000_000.01],
+)
+def test_preco_nao_finito_negativo_ou_absurdo_vira_nulo(valor):
+    assert OfertaLida(produto="x", preco_normal=valor).preco_normal is None
+
+
+def test_preco_no_limite_do_absurdo_passa():
+    assert OfertaLida(produto="x", preco_normal=1_000_000).preco_normal == 1_000_000.0
+
+
+async def test_nan_e_1e30_da_resposta_real_nao_travam(con, pasta):
+    fonte = _fonte(con)
+    encarte_id = _pendente(con, pasta, fonte)
+    texto = '{"ofertas": [{"produto": "x", "preco_normal": NaN, "preco_clube": 1e30}]}'
+    leitor = _leitor(httpx.Response(200, json=_corpo_com_texto(texto)))
+    await _processar(con, leitor, pasta)
+    e = _encarte(con, encarte_id)
+    assert e["status"] == "sem_ofertas"
+    assert json.loads(e["avisos"]) == ["1 oferta sem preço descartada"]
+
+
+async def test_erro_ao_gravar_conta_tentativa_e_nao_trava(con, pasta):
+    fonte = _fonte(con)
+    encarte_id = _pendente(con, pasta, fonte)
+    # Passa por fora do validador, como um bug que deixasse NaN chegar à gravação.
+    torta = OfertaLida.model_construct(
+        produto="x",
+        preco_normal=float("nan"),
+        preco_clube=None,
+        unidade=None,
+        embalagem=None,
+        condicao=None,
+    )
+    leitor = LeitorFalso(_leitura(_oferta(), torta))
+    assert await _processar(con, leitor, pasta) == encarte_id
+    e = _encarte(con, encarte_id)
+    assert (e["status"], e["tentativas"]) == ("pendente", 1)
+    assert e["erro"].startswith("erro ao gravar (")  # o tipo exato é do Decimal
+    assert e["proxima_tentativa_em"] is not None
+    assert _ofertas(con) == []  # a oferta boa voltou no rollback
+    assert not con.in_transaction
+    assert await _processar(con, leitor, pasta) is None  # espera a próxima tentativa
+
+
+async def test_preco_zero_e_ausente(con, pasta):
+    fonte = _fonte(con)
+    encarte_id = _pendente(con, pasta, fonte)
+    leitura = _leitura(_oferta("Arroz", 0, 9.99), _oferta("Feijão", 7.49, 0), _oferta("Sal", 0, 0))
+    await _processar(con, LeitorFalso(leitura), pasta)
+    precos = {
+        o["produto"]: (o["preco_normal_centavos"], o["preco_clube_centavos"]) for o in _ofertas(con)
+    }
+    assert precos == {"Arroz": (999, None), "Feijão": (749, None)}
+    assert json.loads(_encarte(con, encarte_id)["avisos"]) == ["1 oferta sem preço descartada"]
+
+
+async def test_validade_invertida_e_desfeita_com_aviso(con, pasta):
+    fonte = _fonte(con)
+    encarte_id = _pendente(con, pasta, fonte)
+    leitura = _leitura(_oferta(), inicio=date(2026, 11, 24), fim=date(2026, 11, 21))
+    await _processar(con, LeitorFalso(leitura), pasta)
+    e = _encarte(con, encarte_id)
+    assert (e["validade_inicio"], e["validade_fim"]) == ("2026-11-21", "2026-11-24")
+    assert json.loads(e["avisos"]) == ["validade invertida no encarte"]
+
+
+async def test_validade_invertida_e_vencida(con, pasta):
+    fonte = _fonte(con)
+    encarte_id = _pendente(con, pasta, fonte)
+    leitura = _leitura(_oferta(), inicio=date(2026, 11, 20), fim=date(2026, 10, 20))
+    await _processar(con, LeitorFalso(leitura), pasta)
+    e = _encarte(con, encarte_id)
+    assert (e["validade_inicio"], e["validade_fim"]) == ("2026-11-21", "2026-11-21")
+    assert json.loads(e["avisos"]) == [
+        "validade invertida no encarte",
+        "validade lida já vencida ao chegar (20/11/2026); assumido o dia do recebimento",
+    ]
+
+
+async def test_laco_limpa_no_maximo_uma_vez_por_dia(con, pasta, monkeypatch):
+    limpezas, voltas = [], []
+    momento = [datetime(2026, 11, 21, 10, 0, tzinfo=FUSO)]
+
+    class Relogio(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return momento[0]
+
+    async def nada(*args):
+        voltas.append(1)
+        return None
+
+    monkeypatch.setattr(tarefas, "datetime", Relogio)
+    monkeypatch.setattr(encartes, "processar_proximo", nada)
+    monkeypatch.setattr(encartes, "limpar_imagens", lambda *a, **k: limpezas.append(a[2]) or 0)
+    evento = asyncio.Event()
+    tarefa = asyncio.create_task(
+        tarefas.laco_de_encartes(con, LeitorFalso(_leitura()), pasta, evento, pausa=0, espera=30)
+    )
+    try:
+        await _esperar(lambda: len(voltas) == 1)  # a primeira volta, sem evento
+        for n in range(2, 5):  # várias voltas no mesmo dia
+            evento.set()
+            await _esperar(lambda n=n: len(voltas) == n)
+        assert len(limpezas) == 1
+        momento[0] += timedelta(days=1)
+        evento.set()
+        await _esperar(lambda: len(voltas) == 5)
+        assert len(limpezas) == 2
+    finally:
+        tarefa.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await tarefa

@@ -302,6 +302,7 @@ AVISO_PRECO_BAIXO = "preço abaixo de R$ 0,10"
 AVISO_PRECO_ALTO = "preço acima de R$ 2.000"
 AVISO_SEM_NOME = "produto sem nome"
 AVISO_SEM_VALIDADE = "validade não encontrada"
+AVISO_INVERTIDA = "validade invertida no encarte"
 # Seguido de "(dd/mm/aaaa); assumido o dia do recebimento". O prefixo identifica o aviso.
 AVISO_VENCIDO = "validade lida já vencida ao chegar"
 SEM_NOME = "(sem nome)"
@@ -376,6 +377,10 @@ def _validade(leitura: LeituraEncarte, dia: date) -> tuple[date, date, list[str]
     inicio, fim = leitura.validade_inicio, leitura.validade_fim
     if inicio is None or fim is None:
         avisos.append(AVISO_SEM_VALIDADE)
+    elif inicio > fim:
+        # Início depois do fim: o modelo trocou as pontas. Desfaz e avisa.
+        inicio, fim = fim, inicio
+        avisos.append(AVISO_INVERTIDA)
     # O que faltar é o dia do recebimento, sem inverter o intervalo: um encarte
     # que só diz "a partir de sexta" vale de sexta a sexta, não de hoje a sexta.
     if inicio is None:
@@ -401,7 +406,9 @@ def _gravar_leitura(
     linhas = []
     descartadas = 0
     for lida in leitura.ofertas:
-        normal, clube = centavos(lida.preco_normal), centavos(lida.preco_clube)
+        # Preço zero é preço que não foi lido, não oferta de graça.
+        normal = centavos(lida.preco_normal) or None
+        clube = centavos(lida.preco_clube) or None
         if normal is None:
             # Um preço só, lido como de clube: é o preço da oferta.
             normal, clube = clube, None
@@ -452,7 +459,9 @@ def _gravar_leitura(
         # validade ali não é notícia. Só o descarte, se houve, fica registrado.
         status = "sem_ofertas"
         avisos_encarte = [
-            a for a in avisos_encarte if a != AVISO_SEM_VALIDADE and not a.startswith(AVISO_VENCIDO)
+            a
+            for a in avisos_encarte
+            if a not in (AVISO_SEM_VALIDADE, AVISO_INVERTIDA) and not a.startswith(AVISO_VENCIDO)
         ]
 
     try:
@@ -537,8 +546,16 @@ async def processar_proximo(
             con, encarte, agora, f"erro inesperado ({type(erro).__name__})", temporaria=True
         )
     else:
-        status, validas, novas = _gravar_leitura(con, encarte, leitura, leitor.nome)
-        log.info("encarte %d: %s, %d ofertas (%d novas)", encarte["id"], status, validas, novas)
+        try:
+            status, validas, novas = _gravar_leitura(con, encarte, leitura, leitor.nome)
+        except Exception as erro:
+            # Leitura que não grava (já com rollback) não pode deixar o encarte
+            # pendente sem tentativa contada: a fila chamaria o Gemini para sempre.
+            _gravar_falha(
+                con, encarte, agora, f"erro ao gravar ({type(erro).__name__})", temporaria=True
+            )
+        else:
+            log.info("encarte %d: %s, %d ofertas (%d novas)", encarte["id"], status, validas, novas)
     return encarte["id"]
 
 

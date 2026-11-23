@@ -17,6 +17,7 @@ mensagens são curtas e nunca carregam a chave nem o conteúdo da resposta.
 
 import base64
 import json
+import math
 from datetime import date
 from typing import Any, Literal, Protocol
 
@@ -28,7 +29,10 @@ from .config import recusar_no_demo
 API = "https://generativelanguage.googleapis.com/v1beta/models/{modelo}:generateContent"
 TEMPO_LIMITE = 90.0  # segundos; encarte grande no plano gratuito leva uns 20–40 s
 
-STATUS_TEMPORARIOS = {429, 500, 502, 503, 504}
+STATUS_TEMPORARIOS = {408, 429, 500, 502, 503, 504}
+# Acima disto não é preço de supermercado, é leitura errada (ou 1e30, que nem
+# cabe no INTEGER do sqlite): vira None, como o preço ilegível.
+PRECO_ABSURDO = 1_000_000.0
 
 PROMPT = """\
 Você recebe a imagem de um encarte de ofertas de um supermercado brasileiro.
@@ -160,18 +164,29 @@ class OfertaLida(BaseModel):
     @field_validator("preco_normal", "preco_clube", mode="before")
     @classmethod
     def _preco(cls, valor: Any) -> float | None:
-        """Número, ou texto com vírgula ("59,90"). O resto vira None, não erro."""
+        """Número, ou texto com vírgula ("59,90"). O resto vira None, não erro.
+
+        Não finito ("NaN", "Infinity"), negativo ou absurdo também vira None:
+        passaria pelo float e quebraria a conversão para centavos lá na frente.
+        """
         if isinstance(valor, bool):
             return None
         if isinstance(valor, int | float):
-            return float(valor)
-        if isinstance(valor, str):
+            try:
+                numero = float(valor)
+            except OverflowError:  # inteiro grande demais até para float
+                return None
+        elif isinstance(valor, str):
             texto = valor.replace("R$", "").strip().replace(",", ".")
             try:
-                return float(texto)
+                numero = float(texto)
             except ValueError:
                 return None
-        return None
+        else:
+            return None
+        if not math.isfinite(numero) or numero < 0 or numero > PRECO_ABSURDO:
+            return None
+        return numero
 
     @field_validator("unidade", mode="before")
     @classmethod
