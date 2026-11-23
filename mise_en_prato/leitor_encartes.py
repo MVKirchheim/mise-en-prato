@@ -64,6 +64,8 @@ como null.
 "limite 5 por cliente", "ative a oferta no app"). Se não houver condição, use null.
 - Se o encarte se contradisser (ex.: datas diferentes no topo e no rodapé, preço repetido com \
 valores diferentes), registre a divergência em observacoes.
+- Se houver datas divergentes, use em validade_inicio e validade_fim a data mais destacada \
+(a do título ou do topo do encarte), não a do texto miúdo do rodapé.
 - Não invente ofertas nem preços. Se não conseguir ler um valor, use null.
 """
 

@@ -302,7 +302,8 @@ AVISO_PRECO_BAIXO = "preço abaixo de R$ 0,10"
 AVISO_PRECO_ALTO = "preço acima de R$ 2.000"
 AVISO_SEM_NOME = "produto sem nome"
 AVISO_SEM_VALIDADE = "validade não encontrada"
-AVISO_VENCIDO = "vencido ao chegar"
+# Seguido de "(dd/mm/aaaa); assumido o dia do recebimento". O prefixo identifica o aviso.
+AVISO_VENCIDO = "validade lida já vencida ao chegar"
 SEM_NOME = "(sem nome)"
 
 
@@ -382,7 +383,11 @@ def _validade(leitura: LeituraEncarte, dia: date) -> tuple[date, date, list[str]
     if fim is None:
         fim = max(dia, inicio)
     if fim < dia:
-        avisos.append(AVISO_VENCIDO)
+        # Data já vencida quase sempre é leitura errada (o rodapé com o mês
+        # antigo), não encarte velho: vale o dia do recebimento, com o aviso
+        # para conferir, e a oferta aparece hoje em vez de sumir.
+        avisos.append(f"{AVISO_VENCIDO} ({fim:%d/%m/%Y}); assumido o dia do recebimento")
+        inicio = fim = dia
     return inicio, fim, avisos
 
 
@@ -446,7 +451,9 @@ def _gravar_leitura(
         # Imagem sem oferta (aviso de horário, arte institucional): a falta de
         # validade ali não é notícia. Só o descarte, se houve, fica registrado.
         status = "sem_ofertas"
-        avisos_encarte = [a for a in avisos_encarte if a not in (AVISO_SEM_VALIDADE, AVISO_VENCIDO)]
+        avisos_encarte = [
+            a for a in avisos_encarte if a != AVISO_SEM_VALIDADE and not a.startswith(AVISO_VENCIDO)
+        ]
 
     try:
         novas = 0

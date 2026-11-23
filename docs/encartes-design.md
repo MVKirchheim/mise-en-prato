@@ -118,7 +118,7 @@ A mesma arte recebida por duas lojas da rede no mesmo dia gera duas linhas `enca
 - **Na oferta:** preço de clube maior que o normal, preço abaixo de R$ 0,10 ou acima de R$ 2.000, produto sem nome.
 - **No encarte:**
   - sem validade: assume o dia do recebimento e avisa "validade não encontrada";
-  - validade vencida quando o encarte chega: avisa "vencido ao chegar";
+  - validade lida já vencida quando o encarte chega (quase sempre leitura errada, como o rodapé com o mês antigo): assume o dia do recebimento nas duas pontas e avisa "validade lida já vencida ao chegar (dd/mm/aaaa); assumido o dia do recebimento";
   - `observacoes` do modelo: mostradas como vieram.
 - **Zero ofertas:** o status vira `sem_ofertas`, sem aviso, e só entra num contador.
 

@@ -219,6 +219,7 @@ async def test_chave_vai_no_cabecalho_e_nao_na_url():
     )
     partes = corpo["contents"][0]["parts"]
     assert "condicao" in partes[0]["text"]
+    assert "mais destacada" in partes[0]["text"]
     assert partes[1]["inline_data"]["mime_type"] == "image/png"
     assert "Válido só hoje na loja Centro" in partes[2]["text"]
     assert "vale o encarte" in partes[2]["text"]
@@ -628,14 +629,46 @@ async def test_dia_do_recebimento_e_o_local(con, pasta):
     assert _encarte(con, encarte_id)["validade_fim"] == "2026-11-21"
 
 
-async def test_aviso_vencido_ao_chegar(con, pasta):
+AVISO_VENCIDO_22_10 = (
+    "validade lida já vencida ao chegar (22/10/2026); assumido o dia do recebimento"
+)
+
+
+@pytest.mark.parametrize("inicio", [date(2026, 10, 22), None])
+async def test_aviso_vencido_ao_chegar_assume_o_dia(con, pasta, inicio):
     fonte = _fonte(con)
     encarte_id = _pendente(con, pasta, fonte)
-    leitura = _leitura(_oferta(), inicio=date(2026, 10, 22), fim=date(2026, 10, 22))
+    leitura = _leitura(_oferta("Café"), inicio=inicio, fim=date(2026, 10, 22))
     await _processar(con, LeitorFalso(leitura), pasta)
     e = _encarte(con, encarte_id)
     assert e["status"] == "lido"
-    assert json.loads(e["avisos"]) == ["vencido ao chegar"]
+    avisos = json.loads(e["avisos"])
+    assert AVISO_VENCIDO_22_10 in avisos
+    assert ("validade não encontrada" in avisos) == (inicio is None)
+    # A data lida não vale: a oferta fica no dia do recebimento, e aparece hoje.
+    assert (e["validade_inicio"], e["validade_fim"]) == ("2026-11-21", "2026-11-21")
+    (o,) = _ofertas(con)
+    assert (o["validade_inicio"], o["validade_fim"]) == ("2026-11-21", "2026-11-21")
+    assert o["chave_dedupe"].endswith("|2026-11-21|2026-11-21")
+
+
+async def test_validade_que_termina_no_dia_nao_e_vencida(con, pasta):
+    fonte = _fonte(con)
+    encarte_id = _pendente(con, pasta, fonte)
+    leitura = _leitura(_oferta(), inicio=date(2026, 11, 18), fim=DIA)
+    await _processar(con, LeitorFalso(leitura), pasta)
+    e = _encarte(con, encarte_id)
+    assert e["avisos"] is None
+    assert (e["validade_inicio"], e["validade_fim"]) == ("2026-11-18", "2026-11-21")
+
+
+async def test_sem_ofertas_nao_grava_aviso_de_vencido(con, pasta):
+    fonte = _fonte(con)
+    encarte_id = _pendente(con, pasta, fonte)
+    leitura = _leitura(inicio=date(2026, 10, 22), fim=date(2026, 10, 22))
+    await _processar(con, LeitorFalso(leitura), pasta)
+    e = _encarte(con, encarte_id)
+    assert (e["status"], e["avisos"]) == ("sem_ofertas", None)
 
 
 async def test_observacoes_do_modelo_vao_como_vieram(con, pasta):
@@ -659,8 +692,12 @@ async def test_fixture_real_do_max_ponta_a_ponta(con, pasta):
     assert e["status"] == "lido"
     assert e["leitor"] == "gemini-teste"
     assert e["observacoes"]
+    # A leitura real tirou 22/10 do rodapé: vale o dia do recebimento, com aviso.
+    assert json.loads(e["avisos"]) == [AVISO_VENCIDO_22_10]
+    assert (e["validade_inicio"], e["validade_fim"]) == ("2026-11-22", "2026-11-22")
     assert len(_ofertas(con)) == 3
     assert all(o["condicao"] for o in _ofertas(con))
+    assert {o["validade_fim"] for o in _ofertas(con)} == {"2026-11-22"}
 
 
 # ── limpeza ──────────────────────────────────────────────────────────────────
