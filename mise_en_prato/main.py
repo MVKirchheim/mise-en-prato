@@ -187,6 +187,16 @@ Banco = Annotated[sqlite3.Connection, Depends(banco)]
 Morador = Annotated[str, Depends(morador)]
 
 
+def _bloquear_no_demo(o_que: str) -> None:
+    """403 no modo demo para o que sai da casa: SEFAZ e Menor Preço.
+
+    O portfólio público não raspa nota real nem consulta a API do estado. Vai
+    no topo da rota, antes de qualquer gravação, sessão de captcha ou rede.
+    """
+    if config().app_mode == "demo":
+        raise HTTPException(403, f"{o_que} desativada na demonstração pública.")
+
+
 # ── envio de cupom ───────────────────────────────────────────────────────────
 class EnvioCupom(BaseModel):
     url: str = ""  # a URL inteira do QR Code (é dela que sai o hash de segurança)
@@ -258,6 +268,7 @@ def _registrar(con, url: str, quem: str, origem: str) -> dict:
 
 @app.post("/api/cupom")
 async def enviar_cupom(envio: EnvioCupom, quem: Morador, con: Banco):
+    _bloquear_no_demo("Consulta de notas na SEFAZ")
     if envio.url:
         return responder(_registrar(con, envio.url, quem, "qrcode"))
     if envio.chave:
@@ -285,6 +296,7 @@ async def enviar_foto(quem: Morador, con: Banco, foto: Annotated[UploadFile, Fil
        - Centavos fechando: gravado como completo = 1.
        - Divergência: gravado como completo = 0 e direcionado para a fila de revisão.
     """
+    _bloquear_no_demo("Consulta de notas na SEFAZ")
     bruto = await foto.read()
     try:
         achados = ler_qr(bruto)
@@ -467,6 +479,7 @@ def desafio_de_captcha(quem: Morador):
 
     Quem resolve é gente. O mise_en_prato só carrega a imagem até a tela.
     """
+    _bloquear_no_demo("Consulta de notas na SEFAZ")
     _limpar_desafios()
     try:
         desafio = abrir_desafio()
@@ -487,6 +500,7 @@ def enviar_chave(envio: EnvioChave, quem: Morador, con: Banco):
     A chave se confere sozinha, então dígito trocado é recusado ANTES de gastar
     o captcha. E o captcha, uma vez usado, não volta: erro rende desafio novo.
     """
+    _bloquear_no_demo("Consulta de notas na SEFAZ")
     chave = _chave_valida(envio.chave)
     if not envio.reconsultar and (guardado := _ja_guardado(con, chave)):
         return responder(guardado)
@@ -851,6 +865,7 @@ def pesquisar_precos(lista_id: int, request: Request):
     apertou um botão. Antes do lote vai o canário: se a API estiver servindo
     base de teste, descobrir aqui custa uma consulta em vez do lote inteiro.
     """
+    _bloquear_no_demo("Consulta ao Menor Preço")
     con = request.app.state.con
     cliente = menor_preco.MenorPreco(con)
     relatorio = {"consultados": 0, "guardados": 0, "recusados": [], "sem_resultado": []}
@@ -898,6 +913,7 @@ def status_catalogo(_: Morador):
 @app.get("/api/produto/{produto_id}/candidatos")
 def buscar_candidatos_gtin(produto_id: int, request: Request, _: Morador):
     """Busca no Menor Preço e catálogo os códigos candidatos para um produto ambíguo."""
+    _bloquear_no_demo("Consulta ao Menor Preço")
     con = request.app.state.con
     prod = con.execute("SELECT * FROM produto WHERE id = ?", (produto_id,)).fetchone()
     if not prod:
@@ -1535,6 +1551,7 @@ def enriquecer_produtos(request: Request, quantos: int = 5):
     `quantos` é baixo de propósito: cada produto custa uma consulta, e o teto
     por hora é o que mantém esta app do lado certo do termo de uso.
     """
+    _bloquear_no_demo("Consulta ao Menor Preço")
     con = request.app.state.con
     cliente = menor_preco.MenorPreco(con)
     if not cliente.canario():
