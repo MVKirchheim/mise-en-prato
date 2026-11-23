@@ -96,13 +96,16 @@ Os descartes respondem 200 para a Evolution não reenviar. Falha de banco ou de 
 
 A mesma arte recebida por duas lojas da rede no mesmo dia gera duas linhas `encarte` apontando para **o mesmo arquivo** (o nome é o hash). A limpeza de 7 dias (fatia 2) só pode apagar um arquivo quando nenhuma linha ainda o usa.
 
-### 5.3 Leitor: `encartes/leitor.py`
+### 5.3 Leitor: `mise_en_prato/leitor_encartes.py`
 
 - `ler(imagem, mime, legenda) -> LeituraEncarte` (pydantic).
-- `LeitorGemini` usa `httpx` (sem SDK novo), `ENCARTE_MODELO` (padrão `gemini-flash-lite-latest`), `GEMINI_API_KEY`, `temperature: 0`, `responseMimeType: application/json` e `responseSchema`.
-- O prompt parte de `scratchpad/encartes/prompt.txt` do teste, com o campo `condicao` acrescentado e a legenda da mensagem como contexto.
-- O pydantic valida a resposta. Os preços são convertidos para centavos inteiros.
-- Nos testes, entra um leitor falso.
+- `LeitorGemini` usa `httpx` (sem SDK novo), `ENCARTE_MODELO` (padrão `gemini-flash-lite-latest`), `GEMINI_API_KEY`, `temperature: 0`, `responseMimeType: application/json` e `responseSchema`. A chave vai no cabeçalho `x-goog-api-key`, nunca na URL.
+- O prompt (constante `PROMPT` no módulo) parte de `scratchpad/encartes/prompt.txt` do teste, com o campo `condicao` acrescentado, as divergências do encarte pedidas em `observacoes` e a legenda da mensagem como contexto (o encarte manda se discordarem).
+- O pydantic valida a resposta com tolerância: campo extra é ignorado, data fora do `AAAA-MM-DD` vira nula. Os preços são convertidos para centavos inteiros na gravação.
+- Erros: `ErroTemporario` (429, 500, 502, 503, 504, timeout, rede), `ErroPermanente` (demais 4xx, bloqueio, `finishReason` diferente de `STOP`), `RespostaInvalida` (texto que não é JSON ou fora do formato).
+- O processamento (`processar_proximo`) e a limpeza (`limpar_imagens`) moram em `encartes.py`. A resposta inválida é reconhecida pelo texto do `erro` gravado (prefixo "resposta inválida"): duas seguidas, o encarte vira `falhou`.
+- Faltando só uma ponta da validade, a outra vira o dia do recebimento sem inverter o intervalo. Em `sem_ofertas`, os avisos de validade não são gravados (só o de ofertas sem preço descartadas, se houver).
+- Nos testes, entra um leitor falso; as respostas reais do Gemini estão em `tests/fixtures/encartes/gemini_*.json`.
 
 ### 5.4 Laço: `laco_de_encartes` em `tarefas.py`
 
@@ -115,7 +118,7 @@ A mesma arte recebida por duas lojas da rede no mesmo dia gera duas linhas `enca
 - **Na oferta:** preço de clube maior que o normal, preço abaixo de R$ 0,10 ou acima de R$ 2.000, produto sem nome.
 - **No encarte:**
   - sem validade: assume o dia do recebimento e avisa "validade não encontrada";
-  - validade vencida quando o encarte chega: avisa "vencido ao chegar";
+  - validade lida já vencida quando o encarte chega (quase sempre leitura errada, como o rodapé com o mês antigo): assume o dia do recebimento nas duas pontas e avisa "validade lida já vencida ao chegar (dd/mm/aaaa); assumido o dia do recebimento";
   - `observacoes` do modelo: mostradas como vieram.
 - **Zero ofertas:** o status vira `sem_ofertas`, sem aviso, e só entra num contador.
 

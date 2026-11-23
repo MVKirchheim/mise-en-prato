@@ -1,0 +1,35 @@
+{
+  "candidates": [
+    {
+      "content": {
+        "parts": [
+          {
+            "text": "{\n  \"mercado\": \"Max Atacadista\",\n  \"validade_inicio\": \"2026-10-22\",\n  \"validade_fim\": \"2026-10-22\",\n  \"observacoes\": \"A data no topo indica 22 de novembro, mas a nota de rodapé indica preços válidos para o dia 22/10/2026.\",\n  \"ofertas\": [\n    {\n      \"produto\": \"Cápsula L'Or ou Pilão Tipos Caixa com 10 Unidades\",\n      \"preco_normal\": 19.90,\n      \"preco_clube\": 9.95,\n      \"unidade\": \"un\",\n      \"embalagem\": \"10 unidades\",\n      \"condicao\": \"ATIVE OFERTA NO APP, LIMITADO A 12 UN POR CADASTRO\"\n    },\n    {\n      \"produto\": \"Cápsula de Café Dolce Gusto Tipos Caixa com 10 Unidades\",\n      \"preco_normal\": 20.90,\n      \"preco_clube\": 10.45,\n      \"unidade\": \"un\",\n      \"embalagem\": \"10 unidades\",\n      \"condicao\": \"ATIVE OFERTA NO APP, LIMITADO A 12 UN POR CADASTRO\"\n    },\n    {\n      \"produto\": \"Cápsula 3 Corações Sabores Caixa 110g\",\n      \"preco_normal\": 15.90,\n      \"preco_clube\": 7.95,\n      \"unidade\": \"un\",\n      \"embalagem\": \"110g\",\n      \"condicao\": \"ATIVE OFERTA NO APP, LIMITADO A 12 UN POR CADASTRO\"\n    }\n  ]\n}",
+            "thoughtSignature": "EpYBCpMBAWkUfRMe1gpX+yssSD+RHyPZhyVtuGkTm1GAc+pNQfqkR0DPiaWkc4kBZ7H9HNEF379TY8oJmjFmpaT1xn5zi8EklMrJTwrJtan8LNn1HSfcIZvNkuMMFjaYmko+Bpi5QmJdJ2wa5He1ooxB+95NQXiijVtznUEG+mhL5Y+ik6vw0xz8nODlRaTZeHHnrhyHxmjW"
+          }
+        ],
+        "role": "model"
+      },
+      "finishReason": "STOP",
+      "index": 0
+    }
+  ],
+  "usageMetadata": {
+    "promptTokenCount": 1569,
+    "candidatesTokenCount": 424,
+    "totalTokenCount": 1993,
+    "promptTokensDetails": [
+      {
+        "modality": "TEXT",
+        "tokenCount": 496
+      },
+      {
+        "modality": "IMAGE",
+        "tokenCount": 1073
+      }
+    ],
+    "serviceTier": "standard"
+  },
+  "modelVersion": "gemini-3.5-flash-lite",
+  "responseId": "hq8Ea96IMLmYzLEPrcrx-AU"
+}
