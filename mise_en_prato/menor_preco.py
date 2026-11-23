@@ -32,7 +32,7 @@ import urllib.request
 from datetime import datetime, timedelta
 
 from .banco import centavos
-from .config import config
+from .config import config, recusar_no_demo
 from .sanidade import Veredito, avaliar, canario_passou
 
 log = logging.getLogger("mise_en_prato.menor_preco")
@@ -120,6 +120,7 @@ class MenorPreco:
     # ── a consulta ───────────────────────────────────────────────────────────
     def buscar(self, *, termo: str = "", gtin: str = "") -> list[dict]:
         """Uma consulta, validada. Levanta TetoAtingido ou RespostaSuspeita."""
+        recusar_no_demo("Menor Preço")
         if self.consultas_na_ultima_hora() >= self.cfg.teto_consultas_hora:
             libera = self.quando_libera()
             raise TetoAtingido(

@@ -24,7 +24,17 @@ O código deve suportar a variável de ambiente `APP_MODE` (`dev` | `home` | `de
 
 3. **`demo` (Portfólio Público):** Ambiente público de demonstração.
 
-   - **Bloqueios obrigatórios em `demo`:** Desativar completamente chamadas externas ao Menor Preço e raspagem de notas reais na SEFAZ (retornar HTTP 403 com mensagem clara na UI explicando que a função está desativada na demonstração pública).
+   - **Bloqueios obrigatórios em `demo`:** O modo `demo` é **somente leitura e não sai da casa**:
+
+     - **Nenhuma chamada externa**: Menor Preço, raspagem de notas na SEFAZ, Open Food Facts, webhook de encartes do WhatsApp, leitura de encartes por IA (Gemini) e qualquer integração externa que vier depois.
+
+     - **Nenhuma gravação**: nenhuma rota altera o banco nem grava arquivos (cupons, receitas, cardápio, listas, fotos, encartes).
+
+     - **Como responder**: HTTP 403 com mensagem clara, exibida na UI, explicando que a função está desativada na demonstração pública. O bloqueio acontece antes de qualquer gravação ou acesso à rede.
+
+     - **Tarefas de fundo** que chamam serviços externos ou alteram dados não são iniciadas em `demo`.
+
+     - **Módulos novos já nascem com esses bloqueios**, cobertos por testes.
 
    - **Dados de Demonstração:** Utiliza um banco SQLite pré-populado e anonimizado (`demo.db`), mantendo receitas, fotos, cardápios e histórico de preços reais, mas sem chaves de NFC-e, URLs fiscais ou dados pessoais.
 

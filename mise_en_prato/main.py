@@ -42,7 +42,7 @@ from . import (
     unificacao,
 )
 from .banco import conectar
-from .config import config
+from .config import ModoDemo, config
 from .consulta_chave import (
     CaptchaRecusado,
     ChaveNaoAchada,
@@ -142,9 +142,13 @@ async def ciclo_de_vida(app: FastAPI):
     cfg.pasta_fotos_receitas.mkdir(parents=True, exist_ok=True)
     app.state.con = conectar(cfg.banco)
     # O backup vive no ciclo de vida do servidor: sobe junto, desce junto.
-    app.state.tarefas = [
-        asyncio.create_task(tarefas.laco_de_backup(app.state.con, cfg.pasta_backups)),
-    ]
+    # No demo não sobe: o banco é estático (demo.db, regravado a cada deploy) e
+    # o demo não grava arquivo nenhum — backup ali seria só disco gasto.
+    app.state.tarefas = []
+    if cfg.app_mode != "demo":
+        app.state.tarefas.append(
+            asyncio.create_task(tarefas.laco_de_backup(app.state.con, cfg.pasta_backups))
+        )
     yield
     for tarefa in app.state.tarefas:
         tarefa.cancel()
@@ -152,6 +156,36 @@ async def ciclo_de_vida(app: FastAPI):
 
 
 app = FastAPI(title="mise_en_prato", default_response_class=RespostaJSON, lifespan=ciclo_de_vida)
+
+# Métodos que não alteram nada. Tudo o mais, sob /api/, é escrita.
+METODOS_SEGUROS = frozenset({"GET", "HEAD", "OPTIONS"})
+
+
+@app.middleware("http")
+async def demo_somente_leitura(request: Request, chamar):
+    """No demo, nenhuma escrita: todo POST/PUT/PATCH/DELETE em /api/ vira 403.
+
+    Uma trava só, na porta, em vez de uma por rota: rota nova já nasce
+    bloqueada. Não há lista de exceções — nenhuma rota de escrita faz falta
+    para navegar no demo. Por responder ANTES da rota, esta mensagem vence as
+    dos guardas de cada rota (`_bloquear_no_demo` e os inline), que ficam como
+    segunda trava e ainda valem para os GET que saem da casa.
+    """
+    if (
+        request.method not in METODOS_SEGUROS
+        and request.url.path.startswith("/api/")
+        and config().app_mode == "demo"
+    ):
+        return RespostaJSON(
+            {"detail": "Alterações desativadas na demonstração pública."}, status_code=403
+        )
+    return await chamar(request)
+
+
+@app.exception_handler(ModoDemo)
+async def demo_virou_403(_request: Request, erro: ModoDemo):
+    """Cliente de rede que se recusou a sair da casa no demo: 403, não 500."""
+    return RespostaJSON({"detail": str(erro)}, status_code=403)
 
 
 @app.exception_handler(menor_preco.TetoAtingido)
@@ -1521,6 +1555,7 @@ def desmembrar_produto_variante(
 @app.get("/api/catalogo/ean/{gtin}")
 def buscar_metadados_gtin(gtin: str, _: Morador):
     """Consulta metadados de um GTIN/EAN no catálogo offline ou Open Food Facts."""
+    _bloquear_no_demo("Consulta ao Open Food Facts")
     gtin_limpo = catalogo.normalizar_gtin(gtin)
     if not gtin_limpo or not sanidade.digito_gtin_confere(gtin_limpo):
         raise HTTPException(400, "código de barras (GTIN) inválido")

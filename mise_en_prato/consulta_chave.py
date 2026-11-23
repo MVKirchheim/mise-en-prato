@@ -29,6 +29,7 @@ from urllib.parse import urljoin
 
 from bs4 import BeautifulSoup
 
+from .config import recusar_no_demo
 from .menor_preco import UA
 from .nfce_pr import Cupom, interpretar
 
@@ -92,6 +93,7 @@ class Desafio:
 
 
 def _cliente(tempo_limite: int, cookies: dict | None = None):
+    recusar_no_demo("SEFAZ")
     import httpx
 
     return httpx.Client(

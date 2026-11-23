@@ -37,6 +37,8 @@ from urllib.parse import parse_qs, urlparse
 
 from bs4 import BeautifulSoup
 
+from .config import recusar_no_demo
+
 CONSULTA = "https://www.fazenda.pr.gov.br/nfce/qrcode"
 
 
@@ -642,6 +644,7 @@ def buscar(url_ou_chave: str, tempo_limite: int = 30) -> str:
     segurança que o emitente calculou. Guardar a URL do QR é, portanto,
     obrigatório para conseguir reprocessar depois.
     """
+    recusar_no_demo("SEFAZ")
     import httpx
 
     limpo = (url_ou_chave or "").strip().lstrip("\ufeff").strip()

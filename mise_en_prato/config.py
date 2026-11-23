@@ -95,3 +95,20 @@ class Config(BaseSettings):
 @lru_cache
 def config() -> Config:
     return Config()
+
+
+# ── modo demo ────────────────────────────────────────────────────────────────
+class ModoDemo(Exception):
+    """Chamada externa recusada porque a app roda como demonstração pública.
+
+    Mora aqui, e não em main.py, porque quem a levanta são os próprios clientes
+    de rede (SEFAZ, Menor Preço, Open Food Facts). É a segunda trava: a rota
+    que esquecer o bloqueio ainda assim não sai da casa, e o main.py a traduz
+    em 403.
+    """
+
+
+def recusar_no_demo(servico: str) -> None:
+    """Levanta ModoDemo se APP_MODE=demo. Vai antes de qualquer acesso à rede."""
+    if config().app_mode == "demo":
+        raise ModoDemo(f"Chamada externa ({servico}) desativada na demonstração pública.")
