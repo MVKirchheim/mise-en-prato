@@ -27,6 +27,10 @@ services:
       - /etc/localtime:/etc/localtime:ro
 
   dev:
+    # Só sobe quando chamado pelo nome (`docker compose run --rm dev ...`).
+    # Sem o perfil, um `docker compose up -d` no casa-srv subia o dev junto, e ele
+    # tomava a porta 8090 do app de produção.
+    profiles: [dev]
     build:
       context: .
       target: dev
