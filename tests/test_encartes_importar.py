@@ -302,7 +302,7 @@ def test_reler_ja_pendente_so_zera_as_tentativas(dados, con, pasta, capsys):
     assert "já estava pendente" in capsys.readouterr().out
     e = _encarte(con, encarte_id)
     assert (e["status"], e["tentativas"], e["proxima_tentativa_em"]) == ("pendente", 0, None)
-    assert e["erro"] == "HTTP 503"
+    assert e["erro"] is None  # releitura pedida recomeça a contagem de respostas inválidas
 
 
 async def test_reler_mantem_oferta_identica_de_outro_encarte(dados, con, pasta):

@@ -930,7 +930,7 @@ def reler_encarte(con: sqlite3.Connection, encarte_id: int, pasta: Path) -> bool
     try:
         if linha["status"] == "pendente":
             con.execute(
-                """UPDATE encarte SET tentativas = 0, proxima_tentativa_em = NULL
+                """UPDATE encarte SET tentativas = 0, proxima_tentativa_em = NULL, erro = NULL
                     WHERE id = ?""",
                 (encarte_id,),
             )
