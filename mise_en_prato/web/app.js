@@ -118,7 +118,7 @@ function mudarAba(nome) {
   document.querySelectorAll('#dock-nav button[data-aba], #abas button[data-aba]').forEach((b) => {
     b.classList.toggle('ativa', b.dataset.aba === nome);
   });
-  ['enviar', 'gastos', 'produtos', 'receitas', 'cardapio', 'lista', 'revisao'].forEach((n) => {
+  ['enviar', 'gastos', 'produtos', 'receitas', 'cardapio', 'lista', 'ofertas', 'revisao'].forEach((n) => {
     const el = $('#aba-' + n);
     if (el) el.hidden = n !== nome;
   });

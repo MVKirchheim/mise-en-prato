@@ -1,8 +1,8 @@
 /* Service worker mínimo: guarda só o esqueleto da PWA para ela abrir instalada
    e sem rede. Dado NUNCA é cacheado — gasto velho na tela é pior que tela
    vazia, e o banco é a única verdade. */
-const CACHE = 'mise-en-prato-v5';
-const ESQUELETO = ['/', '/estilo.css', '/app.js', '/receitas.js', '/cardapio.js', '/icone.svg', '/manifest.webmanifest'];
+const CACHE = 'mise-en-prato-v6';
+const ESQUELETO = ['/', '/estilo.css', '/app.js', '/receitas.js', '/cardapio.js', '/ofertas.js', '/icone.svg', '/manifest.webmanifest'];
 
 self.addEventListener('install', (ev) => {
   ev.waitUntil(caches.open(CACHE).then((c) => c.addAll(ESQUELETO)).then(() => self.skipWaiting()));

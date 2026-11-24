@@ -609,6 +609,142 @@ def limpar_imagens(con: sqlite3.Connection, pasta: Path, agora: datetime, dias: 
     return apagados
 
 
+# ── tela de ofertas ──────────────────────────────────────────────────────────
+HORAS_SEM_ENCARTE = 48  # passou disso sem chegar encarte, a linha de saúde acende
+DIAS_RECENTES = 7  # a janela das falhas e das imagens sem ofertas
+
+
+def _avisos(texto: str | None) -> list[str]:
+    """A coluna `avisos` (JSON ou NULL) como lista. JSON torto vira lista vazia."""
+    if not texto:
+        return []
+    try:
+        valor = json.loads(texto)
+    except ValueError:
+        return []
+    return [str(a) for a in valor] if isinstance(valor, list) else []
+
+
+def _caminho_seguro(pasta: Path, arquivo: str | None) -> Path | None:
+    """O arquivo do encarte, se existe e mora dentro da pasta de encartes.
+
+    O `arquivo` é relativo à pasta-mãe (os dados), como o webhook o grava. Um
+    caminho que escape da pasta não é servido, nem conta como imagem.
+    """
+    if not arquivo:
+        return None
+    alvo = (pasta.parent / arquivo).resolve()
+    if not alvo.is_relative_to(pasta.resolve()):
+        log.warning("imagem de encarte: caminho fora da pasta, ignorado")
+        return None
+    return alvo if alvo.is_file() else None
+
+
+def imagem_do_encarte(con: sqlite3.Connection, encarte_id: int, pasta: Path) -> tuple[Path, str]:
+    """(caminho, mime) da imagem do encarte. LookupError se não há o que servir.
+
+    Não há quando o encarte não existe, quando a imagem já foi podada (arquivo
+    NULL, depois de 7 dias), quando o arquivo sumiu ou quando o caminho escapa
+    da pasta de encartes.
+    """
+    linha = con.execute("SELECT arquivo, mime FROM encarte WHERE id = ?", (encarte_id,)).fetchone()
+    caminho = _caminho_seguro(pasta, linha["arquivo"]) if linha else None
+    if caminho is None:
+        raise LookupError(f"encarte {encarte_id} sem imagem")
+    return caminho, linha["mime"] or "image/jpeg"
+
+
+def _saude(con: sqlite3.Connection, agora: datetime) -> dict:
+    """O estado da entrada: o último encarte, a fila e o que falhou na semana."""
+    ultimo = con.execute(
+        """SELECT MAX(e.recebido_em) FROM encarte e
+             JOIN encarte_fonte f ON f.id = e.fonte_id
+            WHERE f.ativo = 1"""
+    ).fetchone()[0]
+    desde = _iso(agora - timedelta(days=DIAS_RECENTES))
+    contagens = con.execute(
+        """SELECT
+               COALESCE(SUM(status = 'pendente'), 0),
+               COALESCE(SUM(status = 'falhou' AND recebido_em >= ?), 0),
+               COALESCE(SUM(status = 'sem_ofertas' AND recebido_em >= ?), 0)
+             FROM encarte""",
+        (desde, desde),
+    ).fetchone()
+    pendentes, falhas, sem_ofertas = (int(c) for c in contagens)
+    # Nenhum encarte ainda não é alerta: a tela já diz "nenhum recebido".
+    atrasado = ultimo is not None and agora - datetime.fromisoformat(ultimo) > timedelta(
+        hours=HORAS_SEM_ENCARTE
+    )
+    return {
+        "ultimo_recebido_em": ultimo,
+        "pendentes": pendentes,
+        "falhas_recentes": falhas,
+        "sem_ofertas_recentes": sem_ofertas,
+        "alerta": atrasado or falhas > 0,
+    }
+
+
+def ofertas_vigentes(con: sqlite3.Connection, agora: datetime, pasta: Path) -> dict:
+    """O que a tela "Ofertas" mostra: as ofertas que valem hoje, loja por loja.
+
+    "Hoje" é o dia em Medianeira, não o do UTC: às 23h30 de lá, o UTC já está
+    no dia seguinte. Toda fonte ativa aparece, mesmo sem oferta hoje; a inativa
+    some. `pasta` é a de encartes, para saber se a imagem ainda está no disco.
+    """
+    hoje = agora.astimezone(FUSO).date().isoformat()
+    lojas = [
+        {"id": f["id"], "nome": f["nome"], "encartes": [], "ofertas": []}
+        for f in con.execute(
+            "SELECT id, nome FROM encarte_fonte WHERE ativo = 1 ORDER BY nome COLLATE NOCASE, id"
+        )
+    ]
+    por_id = {loja["id"]: loja for loja in lojas}
+
+    ofertas = con.execute(
+        """SELECT o.id, o.encarte_id, o.fonte_id, o.produto, o.embalagem, o.unidade,
+                  o.preco_normal_centavos, o.preco_clube_centavos, o.condicao,
+                  o.validade_inicio, o.validade_fim, o.avisos
+             FROM oferta o
+             JOIN encarte e ON e.id = o.encarte_id
+            WHERE e.status = 'lido' AND o.validade_inicio <= ? AND o.validade_fim >= ?""",
+        (hoje, hoje),
+    ).fetchall()
+    # Ordem por produto sem maiúsculas nem acento: "Água" fica entre os "a".
+    ofertas = sorted(ofertas, key=lambda o: (normalizar_produto(o["produto"]), o["id"]))
+
+    encartes_vistos: dict[int, set[int]] = {}
+    for o in ofertas:
+        loja = por_id.get(o["fonte_id"])
+        if loja is None:
+            continue
+        oferta = {k: o[k] for k in o.keys() if k != "fonte_id"}
+        oferta["avisos"] = _avisos(o["avisos"])
+        loja["ofertas"].append(oferta)
+        encartes_vistos.setdefault(loja["id"], set()).add(o["encarte_id"])
+
+    for fonte_id, ids in encartes_vistos.items():
+        marcas = ", ".join("?" for _ in ids)
+        for e in con.execute(
+            f"""SELECT id, recebido_em, validade_inicio, validade_fim, observacoes, avisos,
+                       arquivo
+                  FROM encarte WHERE id IN ({marcas}) ORDER BY recebido_em, id""",
+            tuple(ids),
+        ):
+            por_id[fonte_id]["encartes"].append(
+                {
+                    "id": e["id"],
+                    "recebido_em": e["recebido_em"],
+                    "validade_inicio": e["validade_inicio"],
+                    "validade_fim": e["validade_fim"],
+                    "observacoes": e["observacoes"],
+                    "avisos": _avisos(e["avisos"]),
+                    "tem_imagem": _caminho_seguro(pasta, e["arquivo"]) is not None,
+                }
+            )
+
+    return {"hoje": hoje, "lojas": lojas, "saude": _saude(con, agora)}
+
+
 # ── fontes ───────────────────────────────────────────────────────────────────
 def _validar_jid(jid: str) -> str:
     jid = (jid or "").strip()

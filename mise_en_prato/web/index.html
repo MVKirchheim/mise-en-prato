@@ -65,6 +65,14 @@
       </button>
     </div>
 
+    <button type="button" data-aba="ofertas" class="dock-item" title="Ofertas dos Encartes">
+      <svg class="dock-icone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/>
+        <line x1="7" y1="7" x2="7.01" y2="7"/>
+      </svg>
+      <span class="dock-rotulo">Ofertas</span>
+    </button>
+
     <button type="button" data-aba="produtos" class="dock-item" title="Produtos e Despensa">
       <svg class="dock-icone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
         <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/>
@@ -226,6 +234,16 @@
         <h2>Adicionar do que a casa compra</h2>
         <div id="lista-sugestoes" class="lista"></div>
       </div>
+    </section>
+
+    <!-- ── ofertas ────────────────────────────────────────────────────────── -->
+    <section id="aba-ofertas" hidden>
+      <h2 id="ofertas-data" class="ofertas-data">Ofertas</h2>
+      <div id="ofertas-saude"></div>
+      <div id="ofertas-chips" class="chips-sabores-container ofertas-chips" role="group" aria-label="Filtrar por loja"></div>
+      <input id="ofertas-busca" class="ofertas-busca" type="search" placeholder="buscar produto…" autocomplete="off" aria-label="Buscar produto nas ofertas">
+      <div id="ofertas-lojas" aria-live="polite"></div>
+      <p id="ofertas-rodape" class="dica ofertas-rodape" hidden></p>
     </section>
 
     <!-- ── revisão ──────────────────────────────────────────────────────────── -->
@@ -676,6 +694,7 @@
   <script src="/app.js"></script>
   <script src="/receitas.js" defer></script>
   <script src="/cardapio.js" defer></script>
+  <script src="/ofertas.js" defer></script>
 </body>
 
 </html>
