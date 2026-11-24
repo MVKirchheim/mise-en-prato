@@ -159,6 +159,21 @@ A mesma arte recebida por duas lojas da rede no mesmo dia gera duas linhas `enca
 - **Escape do frontend.**
 - **Fixtures:** `lar_2026-11-21_super_promocao.png` e `max_2026-11-22_esquenta_black_friday.png` em `tests/`.
 
+### 5.8 Importar e reler à mão (CLI)
+
+O WhatsApp só entrega à Evolution as mensagens que chegam depois do pareamento, e uma leitura errada não tem outra chance sozinha. Dois comandos põem o encarte na fila com o app no ar; o laço o pega em até 60 s. Ambos recusam no `demo`.
+
+- `importar <fonte> <arquivo> [--legenda TEXTO] [--recebido-em AAAA-MM-DD[THH:MM]]`: `<fonte>` é o id ou o jid de uma fonte ativa. A imagem passa pelas mesmas regras do webhook (10 MB, JPEG/PNG/WebP, dedupe pelo hash) e vira `pendente` com `mensagem_id = manual:<sha256>`. Sem `--recebido-em` vale agora; só com a data, 12:00 local (a validade ausente ou vencida cai nesse dia).
+- `reler <encarte_id>`: apaga as ofertas do encarte e o devolve a `pendente`, com tentativas, erro, leitor, validade, observações e avisos zerados. Se já estava pendente, só zera as tentativas. Recusa se a imagem já foi apagada (depois de 7 dias): aí é reimportar. Oferta idêntica já gravada por outro encarte da mesma fonte (mesma `chave_dedupe`) continua com ele.
+
+No servidor:
+
+```bash
+scp foto.jpg casa-srv:/mnt/data/mise-en-prato/importar/
+docker exec mise-en-prato python -m mise_en_prato.encartes importar 1 /dados/importar/foto.jpg
+docker exec mise-en-prato python -m mise_en_prato.encartes reler 42
+```
+
 ## 6. Entrega
 
 1. **Fatia 1:** migração `015`, webhook, modo descoberta, comando `fonte-encarte adicionar/listar`. Ao fim, os encartes já chegam e ficam guardados.
