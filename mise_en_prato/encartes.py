@@ -21,8 +21,11 @@ mensagem pessoal reenviada dez vezes seria dez vezes pior.
     python -m mise_en_prato.encartes adicionar 120363...@g.us "LAR Centro" --cnpj ...
     python -m mise_en_prato.encartes desativar 2
     python -m mise_en_prato.encartes grupos
+    python -m mise_en_prato.encartes importar 1 /dados/importar/foto.jpg --recebido-em 2026-11-24
+    python -m mise_en_prato.encartes reler 42
 """
 
+import argparse
 import base64
 import binascii
 import hashlib
@@ -224,18 +227,20 @@ def _processar(
     legenda = imagem.get("caption") if isinstance(imagem, dict) else None
     legenda = (legenda.strip() or None) if isinstance(legenda, str) else None
     recebido = _instante(dados.get("messageTimestamp"), agora)
-    comum = {
-        "fonte_id": fonte["id"],
-        "mensagem_id": mensagem_id,
-        "recebido_em": _iso(recebido),
-        "legenda": legenda,
-    }
 
     codificado = mensagem.get("base64")
     if not isinstance(codificado, str) or not codificado.strip():
         # A Evolution não conseguiu baixar a mídia. Fica a linha como falha, para
         # a tela mostrar que um encarte chegou e se perdeu.
-        encarte_id = _inserir_encarte(con, **comum, status="falhou", erro="midia_ausente")
+        encarte_id = _inserir_encarte(
+            con,
+            fonte_id=fonte["id"],
+            mensagem_id=mensagem_id,
+            recebido_em=_iso(recebido),
+            legenda=legenda,
+            status="falhou",
+            erro="midia_ausente",
+        )
         con.commit()
         return SEM_MIDIA, nome, encarte_id
 
@@ -247,19 +252,42 @@ def _processar(
         bruto = base64.b64decode(codificado)
     except (binascii.Error, ValueError):
         return IMAGEM_INVALIDA, nome, None
+
+    codigo, encarte_id = guardar_imagem(con, fonte, bruto, mensagem_id, legenda, recebido, pasta)
+    # No REPETIDO o id é o do encarte que já existia: o log do webhook não o cita.
+    return codigo, nome, encarte_id if codigo == GUARDADO else None
+
+
+def guardar_imagem(
+    con: sqlite3.Connection,
+    fonte: sqlite3.Row,
+    bruto: bytes,
+    mensagem_id: str,
+    legenda: str | None,
+    recebido: datetime,
+    pasta: Path,
+) -> tuple[str, int | None]:
+    """Guarda a imagem da fonte em disco e como encarte `pendente`.
+
+    O trecho comum ao webhook e ao `importar` da CLI: limite de tamanho,
+    formato pelo conteúdo, dedupe pelo hash na fonte e gravação atômica.
+    Devolve (código, id): o id do encarte criado ou, em REPETIDO, o do que já
+    tinha a mesma imagem; nos outros descartes, None.
+    """
     if len(bruto) > LIMITE_IMAGEM:
-        return GRANDE_DEMAIS, nome, None
+        return GRANDE_DEMAIS, None
 
     formato = _formato(bruto)
     if formato is None:
-        return IMAGEM_INVALIDA, nome, None
+        return IMAGEM_INVALIDA, None
     mime, extensao = formato
 
     sha256 = hashlib.sha256(bruto).hexdigest()
-    if con.execute(
-        "SELECT 1 FROM encarte WHERE fonte_id = ? AND sha256 = ?", (fonte["id"], sha256)
-    ).fetchone():
-        return REPETIDO, nome, None
+    existente = con.execute(
+        "SELECT id FROM encarte WHERE fonte_id = ? AND sha256 = ?", (fonte["id"], sha256)
+    ).fetchone()
+    if existente:
+        return REPETIDO, existente["id"]
 
     alvo = pasta / recebido.date().isoformat() / f"{sha256}.{extensao}"
     # A mesma arte chega no mesmo dia por duas lojas da rede, e o caminho é o
@@ -271,7 +299,10 @@ def _processar(
     try:
         encarte_id = _inserir_encarte(
             con,
-            **comum,
+            fonte_id=fonte["id"],
+            mensagem_id=mensagem_id,
+            recebido_em=_iso(recebido),
+            legenda=legenda,
             sha256=sha256,
             arquivo=alvo.relative_to(pasta.parent).as_posix(),
             mime=mime,
@@ -283,7 +314,7 @@ def _processar(
         if not ja_existia:
             alvo.unlink(missing_ok=True)
         raise
-    return GUARDADO, nome, encarte_id
+    return GUARDADO, encarte_id
 
 
 # ── leitura dos pendentes ────────────────────────────────────────────────────
@@ -797,16 +828,25 @@ def listar_fontes(con: sqlite3.Connection) -> list[dict]:
     ]
 
 
+def _resolver_fonte(con: sqlite3.Connection, id_ou_jid: int | str) -> sqlite3.Row | None:
+    """A fonte pelo id numérico ou pelo jid, ativa ou não. None se não existe."""
+    if isinstance(id_ou_jid, int) or str(id_ou_jid).strip().isdigit():
+        return con.execute(
+            "SELECT id, nome, ativo FROM encarte_fonte WHERE id = ?", (int(id_ou_jid),)
+        ).fetchone()
+    return con.execute(
+        "SELECT id, nome, ativo FROM encarte_fonte WHERE grupo_jid = ?", (_validar_jid(id_ou_jid),)
+    ).fetchone()
+
+
 def desativar_fonte(con: sqlite3.Connection, id_ou_jid: int | str) -> bool:
     """Para de aceitar a fonte, sem apagar os encartes dela. False se não existe."""
-    if isinstance(id_ou_jid, int) or str(id_ou_jid).strip().isdigit():
-        cursor = con.execute("UPDATE encarte_fonte SET ativo = 0 WHERE id = ?", (int(id_ou_jid),))
-    else:
-        cursor = con.execute(
-            "UPDATE encarte_fonte SET ativo = 0 WHERE grupo_jid = ?", (_validar_jid(id_ou_jid),)
-        )
+    fonte = _resolver_fonte(con, id_ou_jid)
+    if fonte is None:
+        return False
+    con.execute("UPDATE encarte_fonte SET ativo = 0 WHERE id = ?", (fonte["id"],))
     con.commit()
-    return cursor.rowcount > 0
+    return True
 
 
 def listar_grupos_vistos(con: sqlite3.Connection) -> list[dict]:
@@ -820,10 +860,112 @@ def listar_grupos_vistos(con: sqlite3.Connection) -> list[dict]:
     ]
 
 
-def main(argv: list[str] | None = None) -> int:
-    """CLI para cadastrar as comunidades que mandam encarte."""
-    import argparse
+# ── importar e reler (CLI) ───────────────────────────────────────────────────
+# O WhatsApp só entrega à Evolution o que chega depois do pareamento, e uma
+# leitura errada não tem outra chance sozinha: estes dois põem o encarte na
+# fila à mão. O laço do app pega o pendente na volta seguinte (até 60 s).
+def _recusar_gravacao_no_demo() -> None:
+    from .config import ModoDemo, config
 
+    if config().app_mode == "demo":
+        raise ModoDemo(
+            "Importar e reler encartes gravam dados: desativado na demonstração pública."
+        )
+
+
+def importar_imagem(
+    con: sqlite3.Connection,
+    id_ou_jid: int | str,
+    caminho: Path,
+    pasta: Path,
+    recebido: datetime,
+    legenda: str | None = None,
+) -> tuple[str, int | None, str]:
+    """Põe na fila uma imagem do disco, pelas mesmas regras do webhook.
+
+    Devolve (código, id, nome da fonte); o id é o do encarte criado ou, em
+    REPETIDO, o do que já tinha a mesma imagem. ValueError se a fonte não
+    existe ou está inativa.
+    """
+    _recusar_gravacao_no_demo()
+    fonte = _resolver_fonte(con, id_ou_jid)
+    if fonte is None:
+        raise ValueError(f"fonte {id_ou_jid} não encontrada")
+    if not fonte["ativo"]:
+        raise ValueError(f"fonte {id_ou_jid} está inativa")
+    # Lê um byte além do limite: o que passar dele é GRANDE_DEMAIS sem carregar
+    # o arquivo inteiro.
+    try:
+        with caminho.open("rb") as entrada:
+            bruto = entrada.read(LIMITE_IMAGEM + 1)
+    except OSError as erro:
+        raise ValueError(f"não deu para ler {caminho} ({type(erro).__name__})") from None
+    legenda = (legenda or "").strip() or None
+    # "manual:" não colide com os ids de mensagem do WhatsApp.
+    mensagem_id = "manual:" + hashlib.sha256(bruto).hexdigest()
+    codigo, encarte_id = guardar_imagem(
+        con, fonte, bruto, mensagem_id, legenda, recebido.astimezone(FUSO), pasta
+    )
+    return codigo, encarte_id, fonte["nome"]
+
+
+def reler_encarte(con: sqlite3.Connection, encarte_id: int, pasta: Path) -> bool:
+    """Volta o encarte para a fila, sem as ofertas da leitura anterior.
+
+    True se voltou para pendente; False se já estava pendente, caso em que só
+    zera as tentativas, para tentar já. LookupError se o encarte não existe;
+    ValueError se a imagem já foi apagada (nada muda).
+
+    Oferta idêntica (mesma chave_dedupe) gravada por outro encarte da mesma
+    fonte fica com ele: a releitura a ignora no INSERT OR IGNORE.
+    """
+    _recusar_gravacao_no_demo()
+    linha = con.execute(
+        "SELECT status, arquivo FROM encarte WHERE id = ?", (encarte_id,)
+    ).fetchone()
+    if linha is None:
+        raise LookupError(f"encarte {encarte_id} não encontrado")
+    if _caminho_seguro(pasta, linha["arquivo"]) is None:
+        raise ValueError("imagem já apagada; reimporte com `importar`")
+    try:
+        if linha["status"] == "pendente":
+            con.execute(
+                """UPDATE encarte SET tentativas = 0, proxima_tentativa_em = NULL
+                    WHERE id = ?""",
+                (encarte_id,),
+            )
+        else:
+            con.execute("DELETE FROM oferta WHERE encarte_id = ?", (encarte_id,))
+            con.execute(
+                """UPDATE encarte
+                      SET status = 'pendente', tentativas = 0, proxima_tentativa_em = NULL,
+                          erro = NULL, leitor = NULL, validade_inicio = NULL,
+                          validade_fim = NULL, observacoes = NULL, avisos = NULL
+                    WHERE id = ?""",
+                (encarte_id,),
+            )
+        con.commit()
+    except BaseException:
+        con.rollback()
+        raise
+    return linha["status"] != "pendente"
+
+
+def _data_de_recebimento(valor: str) -> datetime:
+    """`AAAA-MM-DD` (meio-dia local) ou `AAAA-MM-DDTHH:MM`, no fuso da casa."""
+    try:
+        if len(valor) == len("AAAA-MM-DD"):
+            dia = date.fromisoformat(valor)
+            return datetime(dia.year, dia.month, dia.day, 12, 0, tzinfo=FUSO)
+        return datetime.strptime(valor, "%Y-%m-%dT%H:%M").replace(tzinfo=FUSO)
+    except ValueError:
+        raise argparse.ArgumentTypeError(
+            f"data inválida: {valor!r} (use AAAA-MM-DD ou AAAA-MM-DDTHH:MM)"
+        ) from None
+
+
+def main(argv: list[str] | None = None) -> int:
+    """CLI para cadastrar as comunidades que mandam encarte e pôr encartes na fila."""
     from .banco import conectar
     from .config import config
 
@@ -842,10 +984,28 @@ def main(argv: list[str] | None = None) -> int:
 
     sub.add_parser("grupos", help="Lista os grupos desconhecidos que mandaram imagem")
 
+    p_importar = sub.add_parser("importar", help="Põe na fila uma imagem de encarte do disco")
+    p_importar.add_argument("fonte", help="O id ou o jid da fonte (ativa)")
+    p_importar.add_argument("arquivo", type=Path, help="A imagem (JPEG, PNG ou WebP)")
+    p_importar.add_argument("--legenda", help="A legenda, se a mensagem tinha uma")
+    p_importar.add_argument(
+        "--recebido-em",
+        type=_data_de_recebimento,
+        help="AAAA-MM-DD (vale 12:00) ou AAAA-MM-DDTHH:MM, hora local; o padrão é agora",
+    )
+
+    p_reler = sub.add_parser("reler", help="Volta um encarte para a fila de leitura")
+    p_reler.add_argument("encarte", type=int, help="O id do encarte")
+
     args = parser.parse_args(argv)
     if args.comando is None:
         parser.print_help()
         return 0
+
+    # Antes de abrir o banco: conectar já migra, e no demo nada se grava.
+    if args.comando in ("importar", "reler") and config().app_mode == "demo":
+        print(f"Erro: {args.comando} grava dados e está desativado na demonstração pública.")
+        return 1
 
     con = conectar(config().banco)
     try:
@@ -874,7 +1034,28 @@ def main(argv: list[str] | None = None) -> int:
                     f"  {g['grupo_jid']}  primeira: {g['primeira_vez']}  "
                     f"última: {g['ultima_vez']}  imagens: {g['imagens']}"
                 )
-    except ValueError as erro:
+        elif args.comando == "importar":
+            codigo, encarte_id, nome = importar_imagem(
+                con,
+                args.fonte,
+                args.arquivo,
+                config().pasta_encartes,
+                args.recebido_em or datetime.now(FUSO),
+                args.legenda,
+            )
+            if codigo == GUARDADO:
+                print(f"Encarte {encarte_id} pendente ({nome})")
+            elif codigo == REPETIDO:
+                print(f"Já importado: encarte {encarte_id} ({nome})")
+            else:
+                print(f"Descartado: {codigo.upper()} ({nome})")
+                return 1
+        elif args.comando == "reler":
+            if reler_encarte(con, args.encarte, config().pasta_encartes):
+                print(f"Encarte {args.encarte} de volta à fila (pendente).")
+            else:
+                print(f"Encarte {args.encarte} já estava pendente: tentativas zeradas.")
+    except (ValueError, LookupError) as erro:
         print(f"Erro: {erro}")
         return 1
     finally:
