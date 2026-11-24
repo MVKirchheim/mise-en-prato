@@ -1513,7 +1513,7 @@ svg.grafico-historico {
   }
 
   .dock-flutuante {
-    max-width: 480px;
+    max-width: 520px; /* seis abas de 4.2rem + o FAB */
     padding: .5rem .8rem;
   }
 
@@ -1547,14 +1547,62 @@ svg.grafico-historico {
   }
 }
 
-/* Dock em celular estreito (360px): cinco abas + FAB sem quebrar nem rolar.
+/* Dock em celular estreito: seis abas + FAB sem quebrar rótulo nem rolar.
+   Cada aba fica com 1/6 do que sobra do FAB; "Produtos" e "Cardápio" são os
+   rótulos mais largos. Até 440px a letra encolhe um pouco; até 400px (o
+   celular de 360px) a dock ganha largura, o FAB encolhe e a letra também.
    Fica no fim do arquivo para vencer as regras-base da dock lá em cima. */
-@media (max-width: 400px) {
+@media (max-width: 440px) {
   .dock-flutuante { padding: .4rem .4rem; }
   .dock-item { padding: .3rem .05rem; }
   .dock-rotulo { font-size: .66rem; letter-spacing: 0; }
   .dock-fab-container { margin: 0; }
 }
+@media (max-width: 400px) {
+  .dock-flutuante { width: calc(100% - 1rem); padding: .35rem .25rem; }
+  .dock-item { padding: .3rem 0; }
+  .dock-rotulo { font-size: .62rem; }
+  .dock-fab { width: 46px; height: 46px; }
+  .dock-ponto-alerta { right: 10px; }
+}
+
+/* ── ofertas dos encartes ─────────────────────────────────────────────────── */
+.ofertas-data { margin-top: .4rem; }
+.ofertas-data::first-letter { text-transform: uppercase; }
+.ofertas-saude { margin-top: 0; }
+.ofertas-chips { margin: 0 0 .6rem; }
+.ofertas-chips .chip-sabor[aria-pressed="true"] {
+  background: var(--terracota); border-color: var(--terracota); color: #fff;
+}
+.ofertas-busca { margin-bottom: .9rem; }
+.ofertas-loja { margin-bottom: .9rem; }
+.ofertas-loja-nome {
+  font-family: var(--fonte-display); font-size: 1.1rem; font-weight: 600;
+  margin: 0 0 .5rem; overflow-wrap: anywhere;
+}
+.ofertas-vazia { padding: .2rem 0; }
+.ofertas-encarte {
+  display: flex; justify-content: space-between; align-items: baseline; gap: .8rem;
+  padding: .45rem .6rem; margin-bottom: .5rem; border-radius: 10px; background: var(--realce);
+}
+.ofertas-encarte-texto { display: flex; flex-wrap: wrap; gap: .15rem .4rem; min-width: 0;
+                         overflow-wrap: anywhere; }
+.ofertas-ver { color: var(--terracota); font-weight: 600; white-space: nowrap; }
+.ofertas-lista { list-style: none; margin: 0; padding: 0; }
+.oferta {
+  display: flex; justify-content: space-between; align-items: flex-start; gap: .8rem;
+  padding: .55rem 0; border-top: 1px solid var(--borda);
+}
+.oferta:first-child { border-top: 0; }
+.oferta-texto { display: flex; flex-direction: column; min-width: 0; overflow-wrap: anywhere; }
+.oferta-produto { font-weight: 600; }
+.oferta-aviso { color: var(--alerta); font-size: .8rem; }
+.oferta-precos { display: flex; flex-direction: column; align-items: flex-end; text-align: right;
+                 flex-shrink: 0; }
+.oferta-preco { font-size: 1.1rem; font-weight: 700; color: var(--tinta); }
+.oferta-normal { color: var(--fraca); font-size: .84rem; }
+.oferta-rotulo { color: var(--fraca); font-size: .7rem; font-weight: 500; }
+.ofertas-rodape { text-align: center; margin: 1rem 0; }
 
 /* ── cardápio semanal ─────────────────────────────────────────────────────── */
 .cardapio-topo {

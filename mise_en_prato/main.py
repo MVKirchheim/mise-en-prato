@@ -2113,6 +2113,26 @@ async def webhook_encartes(request: Request, con: Banco):
     return responder({"resultado": resultado})
 
 
+@app.get("/api/encartes/ofertas")
+async def ofertas_de_hoje(_: Morador, con: Banco):
+    """As ofertas que valem hoje em cada loja, e o estado da entrada de encartes."""
+    return responder(
+        encartes.ofertas_vigentes(con, datetime.now(encartes.FUSO), config().pasta_encartes)
+    )
+
+
+@app.get("/api/encartes/{encarte_id}/imagem")
+async def imagem_de_encarte(encarte_id: int, _: Morador, con: Banco):
+    """A imagem do encarte, para conferir a leitura. 404 depois da poda de 7 dias."""
+    try:
+        caminho, mime = encartes.imagem_do_encarte(con, encarte_id, config().pasta_encartes)
+    except LookupError as erro:
+        raise HTTPException(404, "imagem do encarte não encontrada") from erro
+    return FileResponse(
+        caminho, media_type=mime, headers={"Cache-Control": "private, max-age=3600"}
+    )
+
+
 # ── a PWA ────────────────────────────────────────────────────────────────────
 @app.get("/")
 async def raiz():

@@ -46,6 +46,13 @@ def test_handlers_inline_sem_dado_interpolado():
     assert not achados, "dado interpolado em handler inline:\n" + "\n".join(achados)
 
 
+def test_varre_o_js_de_todas_as_telas():
+    """Tela nova com JS próprio entra na varredura de cima; aqui fica a prova."""
+    assert {"app.js", "cardapio.js", "receitas.js", "ofertas.js"} <= {
+        arq.name for arq in WEB.glob("*.js")
+    }
+
+
 def test_detector_pega_o_caso_perigoso():
     perigoso = (
         "`<b onclick=\"ver('${c.chave}')\">` + `<i onclick='f(${Number(x)})'>`"

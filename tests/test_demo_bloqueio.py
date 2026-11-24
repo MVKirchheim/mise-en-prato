@@ -193,6 +193,7 @@ def test_get_externo_barrado_no_demo(demo, armadilhas, caminho, mensagem):
         "/api/receitas",
         "/api/cardapio?semana=2026-11-11",
         "/api/cardapio/lista?semana=2026-11-11",
+        "/api/encartes/ofertas",
     ],
 )
 def test_leituras_continuam_no_demo(demo, armadilhas, caminho):
